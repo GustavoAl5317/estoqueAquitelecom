@@ -1,0 +1,790 @@
+// ---------------------------------------------------------------------------
+// PLATAFORMA OPERACIONAL — SCHEMA
+//
+// BLOCO 1 — ESTOQUE ................. implementado
+// BLOCO 2 — ORDENS DE SERVIÇO ....... estrutura preparada
+// BLOCO 3 — GEOLOCALIZAÇÃO .......... estrutura preparada
+// BLOCO 4 — INTELIGÊNCIA OPERACIONAL  consome os três anteriores
+//
+// SQLite não suporta o tipo `enum` do Prisma nem `Json`. Todos os campos de
+// domínio fechado são `String` e os valores válidos vivem em src/lib/dominio.ts
+// (fonte única de verdade, validada por zod nas bordas).
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===========================================================================
+// PESSOAS E ACESSO
+// ===========================================================================
+
+model Usuario {
+  id        String   @id @default(cuid())
+  nome      String
+  email     String   @unique
+  papel     String // ADMIN | SUPERVISOR | ALMOXARIFE | TECNICO | VISUALIZACAO
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  tecnico   Tecnico?
+
+  estoquesSobResponsabilidade Estoque[]        @relation("EstoqueResponsavel")
+  entradasCriadas             Entrada[]        @relation("EntradaCriadaPor")
+  entradasRecebidas           Entrada[]        @relation("EntradaRecebidaPor")
+  divergencias                Divergencia[]
+  movimentacoesSolicitadas    Movimentacao[]   @relation("MovimentacaoSolicitante")
+  movimentacoesExecutadas     Movimentacao[]   @relation("MovimentacaoResponsavel")
+  movimentos                  Movimento[]
+  reservas                    Reserva[]
+  inventarios                 Inventario[]
+  triagens                    Triagem[]
+  auditorias                  Auditoria[]
+  vinculosVeiculo             VinculoVeiculo[]
+}
+
+model Equipe {
+  id       String   @id @default(cuid())
+  nome     String   @unique
+  tipo     String // INSTALACAO | MANUTENCAO | INFRAESTRUTURA | OUTRA
+  status   String   @default("ATIVA") // ATIVA | INATIVA
+  criadoEm DateTime @default(now())
+
+  detentor Detentor?
+  tecnicos Tecnico[]
+  reservas Reserva[]
+  ordens   OrdemServico[]
+  bairros  Bairro[]
+}
+
+model Tecnico {
+  id        String   @id @default(cuid())
+  nome      String
+  matricula String   @unique
+  telefone  String?
+  status    String   @default("DISPONIVEL") // DISPONIVEL | EM_DESLOCAMENTO | EM_ATENDIMENTO | PAUSADO | AGUARDANDO_MATERIAL | AGUARDANDO_CLIENTE | RETORNANDO_BASE | FORA_JORNADA | INDISPONIVEL
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  equipe   Equipe?  @relation(fields: [equipeId], references: [id])
+  equipeId String?
+
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+  usuarioId String?  @unique
+
+  detentor      Detentor?
+  reservas      Reserva[]
+  localizacoes  LocalizacaoTecnico[]
+  ordens        OrdemServico[]
+  veiculosAtuais Veiculo[]        @relation("VeiculoTecnicoAtual")
+  vinculosVeiculo VinculoVeiculo[]
+  bairrosPrimario   Bairro[] @relation("BairroPrincipal")
+  bairrosSecundario Bairro[] @relation("BairroSecundario")
+}
+
+// ===========================================================================
+// 1.1 — ESTRUTURA DO ESTOQUE
+// ===========================================================================
+
+model Estoque {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  tipo      String // CENTRAL | TECNICO | ALMOXARIFADO | POP | BASE | VEICULO | TEMPORARIO
+  endereco  String?
+  latitude  Float?
+  longitude Float?
+  status    String   @default("ATIVO") // ATIVO | INATIVO
+  criadoEm  DateTime @default(now())
+
+  responsavel   Usuario? @relation("EstoqueResponsavel", fields: [responsavelId], references: [id])
+  responsavelId String?
+
+  detentor Detentor?
+  veiculo  Veiculo?
+}
+
+/// Abstração que unifica os três possíveis "donos" de material.
+/// É o que permite que 1.10 (Estoque↔Técnico↔Equipe) seja uma única operação.
+model Detentor {
+  id       String   @id @default(cuid())
+  tipo     String // ESTOQUE | TECNICO | EQUIPE
+  nome     String // denormalizado para busca e exibição rápidas
+  criadoEm DateTime @default(now())
+
+  estoque   Estoque? @relation(fields: [estoqueId], references: [id])
+  estoqueId String?  @unique
+  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String?  @unique
+  equipe    Equipe?  @relation(fields: [equipeId], references: [id])
+  equipeId  String?  @unique
+
+  saldos          Saldo[]
+  unidades        UnidadeSerial[]
+  entradas        Entrada[]
+  reservas        Reserva[]
+  inventarios     Inventario[]
+  triagensDestino Triagem[]        @relation("TriagemDestino")
+
+  movimentacoesOrigem  Movimentacao[] @relation("MovimentacaoOrigem")
+  movimentacoesDestino Movimentacao[] @relation("MovimentacaoDestino")
+  movimentosOrigem     Movimento[]    @relation("MovimentoOrigem")
+  movimentosDestino    Movimento[]    @relation("MovimentoDestino")
+
+  @@index([tipo])
+}
+
+// ===========================================================================
+// 1.2 / 1.3 — CADASTRO DE MATERIAIS
+// ===========================================================================
+
+model Categoria {
+  id       String   @id @default(cuid())
+  nome     String   @unique
+  slug     String   @unique
+  cor      String   @default("#64748b")
+  ordem    Int      @default(0)
+  ativa    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  materiais Material[]
+}
+
+model Fornecedor {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  documento String?
+  contato   String?
+  criadoEm  DateTime @default(now())
+
+  entradas Entrada[]
+}
+
+model Material {
+  id             String   @id @default(cuid())
+  codigoInterno  String   @unique
+  nome           String
+  fabricante     String?
+  modelo         String?
+  unidadeMedida  String   @default("UN") // UN | M | PC | CX | KG | L | ROLO
+  /// QUANTIDADE = 1.3 não serializado | SERIAL = 1.3 serializado
+  controle       String   @default("QUANTIDADE")
+  quantidadeMinima Float  @default(0)
+  quantidadeIdeal  Float  @default(0)
+  valorMedio     Float    @default(0)
+  codigoBarras   String?
+  descricao      String?
+  status         String   @default("ATIVO") // ATIVO | INATIVO
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  categoriaId String
+
+  saldos          Saldo[]
+  unidades        UnidadeSerial[]
+  entradaItens    EntradaItem[]
+  movimentacaoItens MovimentacaoItem[]
+  movimentos      Movimento[]
+  reservas        Reserva[]
+  inventarioItens InventarioItem[]
+  triagens        Triagem[]
+  materiaisPrevistos MaterialPrevistoOS[]
+
+  @@index([categoriaId])
+  @@index([nome])
+}
+
+/// Saldo por material e por detentor. 1.8 e 1.9 saem daqui de graça.
+model Saldo {
+  id         String @id @default(cuid())
+  quantidade Float  @default(0)
+  /// 1.14 — reservado não some do saldo, apenas deixa de ser "realmente disponível"
+  reservado  Float  @default(0)
+
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+  detentor   Detentor @relation(fields: [detentorId], references: [id])
+  detentorId String
+
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([materialId, detentorId])
+  @@index([detentorId])
+}
+
+/// 1.3 / 1.13 — unidade individual de material serializado
+model UnidadeSerial {
+  id           String   @id @default(cuid())
+  serial       String   @unique
+  macAddress   String?
+  patrimonio   String?
+  codigoBarras String?
+  lote         String?
+  /// 1.11 — NOVO | USADO | BOM | DANIFICADO | DEFEITUOSO | MANUTENCAO | SUCATA
+  estadoFisico String   @default("NOVO")
+  /// 1.13 — DISPONIVEL | EM_POSSE_TECNICO | EM_USO | INSTALADO | AGUARDANDO_DEVOLUCAO |
+  ///        DEVOLVIDO | EM_TRIAGEM | EM_MANUTENCAO | DEFEITUOSO | PERDIDO | SUCATA | BAIXADO
+  status       String   @default("DISPONIVEL")
+  valorUnitario Float?
+  /// referência do cliente onde a unidade está instalada (base da logística reversa)
+  clienteRef   String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+  detentor   Detentor? @relation(fields: [detentorId], references: [id])
+  detentorId String?
+
+  entradaItem   EntradaItem? @relation(fields: [entradaItemId], references: [id])
+  entradaItemId String?
+
+  movimentos       Movimento[]
+  reservas         Reserva[]
+  triagens         Triagem[]
+  movimentacaoItens MovimentacaoItemSerial[]
+
+  @@index([materialId])
+  @@index([detentorId])
+  @@index([status])
+  @@index([macAddress])
+  @@index([patrimonio])
+}
+
+// ===========================================================================
+// 1.4 / 1.5 / 1.6 — ENTRADA, RECEBIMENTO E DIVERGÊNCIA
+// ===========================================================================
+
+model Entrada {
+  id     String @id @default(cuid())
+  numero String @unique
+  /// COMPRA | TRANSFERENCIA | DEVOLUCAO | RETORNO_TECNICO | RETIRADA_CLIENTE | AJUSTE | REPOSICAO | OUTRA
+  tipo   String
+  /// 1.5 — AGUARDANDO_RECEBIMENTO | RECEBIDO | CANCELADA
+  status String @default("AGUARDANDO_RECEBIMENTO")
+
+  documento  String? // NF / documento fiscal
+  lote       String?
+  observacao String?
+
+  destino   Detentor @relation(fields: [destinoId], references: [id])
+  destinoId String
+
+  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  fornecedorId String?
+
+  criadoPor   Usuario  @relation("EntradaCriadaPor", fields: [criadoPorId], references: [id])
+  criadoPorId String
+  criadoEm    DateTime @default(now())
+
+  recebidoPor   Usuario?  @relation("EntradaRecebidaPor", fields: [recebidoPorId], references: [id])
+  recebidoPorId String?
+  recebidoEm    DateTime?
+
+  itens      EntradaItem[]
+  movimentos Movimento[]
+
+  @@index([status])
+  @@index([criadoEm])
+}
+
+model EntradaItem {
+  id                  String  @id @default(cuid())
+  quantidadePrevista  Float
+  quantidadeRecebida  Float?
+  valorUnitario       Float?
+  lote                String?
+  /// 1.4 — seriais cadastrados/importados já na entrada, confirmados no recebimento
+  /// (lista JSON serializada; SQLite não possui tipo Json)
+  seriaisPrevistos    String?
+
+  entrada    Entrada  @relation(fields: [entradaId], references: [id], onDelete: Cascade)
+  entradaId  String
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+
+  seriais      UnidadeSerial[]
+  divergencia  Divergencia?
+
+  @@index([entradaId])
+}
+
+/// 1.6 — permanece no histórico para sempre
+model Divergencia {
+  id         String   @id @default(cuid())
+  previsto   Float
+  recebido   Float
+  diferenca  Float
+  motivo     String
+  criadoEm   DateTime @default(now())
+
+  entradaItem   EntradaItem @relation(fields: [entradaItemId], references: [id], onDelete: Cascade)
+  entradaItemId String      @unique
+
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  usuarioId String
+}
+
+// ===========================================================================
+// 1.7 / 1.10 / 1.11 / 1.25 — DOCUMENTO DE MOVIMENTAÇÃO
+// Saída, transferência, devolução, ajuste e baixa compartilham a mesma
+// estrutura: tirar de um detentor e (opcionalmente) entregar a outro.
+// ===========================================================================
+
+model Movimentacao {
+  id     String @id @default(cuid())
+  numero String @unique
+  /// SAIDA | TRANSFERENCIA | DEVOLUCAO | AJUSTE | BAIXA
+  tipo   String
+  /// 1.7 — TECNICO | EQUIPE | ORDEM_SERVICO | TRANSFERENCIA | USO_INTERNO | BAIXA |
+  ///       PERDA | DEFEITO | INSTALACAO | MANUTENCAO | RETIRADA_CLIENTE | AJUSTE_INVENTARIO
+  finalidade String
+  status     String @default("CONCLUIDA") // CONCLUIDA | CANCELADA
+
+  /// 1.25 — obrigatório para AJUSTE, sempre exibido no histórico
+  motivo     String?
+  observacao String?
+
+  origem     Detentor? @relation("MovimentacaoOrigem", fields: [origemId], references: [id])
+  origemId   String?
+  destino    Detentor? @relation("MovimentacaoDestino", fields: [destinoId], references: [id])
+  destinoId  String?
+
+  solicitante   Usuario? @relation("MovimentacaoSolicitante", fields: [solicitanteId], references: [id])
+  solicitanteId String?
+  /// quem liberou / executou a operação
+  responsavel   Usuario  @relation("MovimentacaoResponsavel", fields: [responsavelId], references: [id])
+  responsavelId String
+
+  // 1.34 / 1.35 — ganchos para Blocos 2 e 3
+  ordemServico   OrdemServico? @relation(fields: [ordemServicoId], references: [id])
+  ordemServicoId String?
+  latitude       Float?
+  longitude      Float?
+
+  criadoEm DateTime @default(now())
+
+  itens      MovimentacaoItem[]
+  movimentos Movimento[]
+  triagens   Triagem[]
+
+  @@index([tipo])
+  @@index([criadoEm])
+}
+
+model MovimentacaoItem {
+  id         String @id @default(cuid())
+  quantidade Float
+  /// 1.11 — estado informado na devolução
+  estadoFisico  String?
+  valorUnitario Float?
+
+  movimentacao   Movimentacao @relation(fields: [movimentacaoId], references: [id], onDelete: Cascade)
+  movimentacaoId String
+  material       Material     @relation(fields: [materialId], references: [id])
+  materialId     String
+
+  seriais MovimentacaoItemSerial[]
+
+  @@index([movimentacaoId])
+}
+
+model MovimentacaoItemSerial {
+  id String @id @default(cuid())
+
+  item   MovimentacaoItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId String
+  unidade   UnidadeSerial @relation(fields: [unidadeId], references: [id])
+  unidadeId String
+
+  @@unique([itemId, unidadeId])
+}
+
+// ===========================================================================
+// 1.23 / 1.24 — RAZÃO IMUTÁVEL DE MOVIMENTOS
+// Toda operação do sistema grava aqui. É a fonte da timeline e das análises.
+// ===========================================================================
+
+model Movimento {
+  id String @id @default(cuid())
+  /// ENTRADA | SAIDA | TRANSFERENCIA | DEVOLUCAO | AJUSTE | BAIXA | TRIAGEM |
+  /// RESERVA | LIBERACAO_RESERVA | INSTALACAO | RETIRADA_CLIENTE
+  tipo       String
+  quantidade Float
+  /// impacto no saldo do detentor de destino (+) ou origem (−); informativo para relatórios
+  valorUnitario Float?
+  observacao    String?
+  criadoEm      DateTime @default(now())
+
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+
+  unidade   UnidadeSerial? @relation(fields: [unidadeId], references: [id])
+  unidadeId String?
+
+  origem    Detentor? @relation("MovimentoOrigem", fields: [origemId], references: [id])
+  origemId  String?
+  destino   Detentor? @relation("MovimentoDestino", fields: [destinoId], references: [id])
+  destinoId String?
+
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  usuarioId String
+
+  entrada        Entrada?      @relation(fields: [entradaId], references: [id])
+  entradaId      String?
+  movimentacao   Movimentacao? @relation(fields: [movimentacaoId], references: [id])
+  movimentacaoId String?
+  inventario     Inventario?   @relation(fields: [inventarioId], references: [id])
+  inventarioId   String?
+
+  // 1.35 — geolocalização da movimentação
+  latitude  Float?
+  longitude Float?
+  local     String?
+
+  ordemServico   OrdemServico? @relation(fields: [ordemServicoId], references: [id])
+  ordemServicoId String?
+
+  @@index([materialId, criadoEm])
+  @@index([unidadeId, criadoEm])
+  @@index([origemId])
+  @@index([destinoId])
+  @@index([tipo, criadoEm])
+  @@index([criadoEm])
+}
+
+// ===========================================================================
+// 1.14 — RESERVA
+// ===========================================================================
+
+model Reserva {
+  id         String @id @default(cuid())
+  quantidade Float
+  /// ORDEM_SERVICO | EQUIPE | TECNICO | PROJETO | MANUTENCAO
+  finalidade String
+  /// ATIVA | CONSUMIDA | CANCELADA | EXPIRADA
+  status     String @default("ATIVA")
+  observacao String?
+  criadoEm   DateTime @default(now())
+  expiraEm   DateTime?
+  encerradoEm DateTime?
+
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+  detentor   Detentor @relation(fields: [detentorId], references: [id])
+  detentorId String
+
+  unidade   UnidadeSerial? @relation(fields: [unidadeId], references: [id])
+  unidadeId String?
+
+  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String?
+  equipe    Equipe?  @relation(fields: [equipeId], references: [id])
+  equipeId  String?
+
+  ordemServico   OrdemServico? @relation(fields: [ordemServicoId], references: [id])
+  ordemServicoId String?
+
+  criadoPor   Usuario @relation(fields: [criadoPorId], references: [id])
+  criadoPorId String
+
+  @@index([status])
+  @@index([materialId, detentorId])
+}
+
+// ===========================================================================
+// 1.12 — LOGÍSTICA REVERSA / TRIAGEM
+// ===========================================================================
+
+model Triagem {
+  id         String @id @default(cuid())
+  quantidade Float  @default(1)
+  /// AGUARDANDO | EM_ANALISE | CONCLUIDA
+  status     String @default("AGUARDANDO")
+  /// APROVADO | MANUTENCAO | DESCARTE  (preenchido ao concluir)
+  resultado  String?
+  estadoRecebido String? // estado informado na devolução
+  laudo      String?
+  criadoEm   DateTime  @default(now())
+  concluidoEm DateTime?
+
+  material   Material @relation(fields: [materialId], references: [id])
+  materialId String
+  unidade    UnidadeSerial? @relation(fields: [unidadeId], references: [id])
+  unidadeId  String?
+
+  origemMovimentacao   Movimentacao? @relation(fields: [origemMovimentacaoId], references: [id])
+  origemMovimentacaoId String?
+
+  destino   Detentor? @relation("TriagemDestino", fields: [destinoId], references: [id])
+  destinoId String?
+
+  responsavel   Usuario? @relation(fields: [responsavelId], references: [id])
+  responsavelId String?
+
+  @@index([status])
+}
+
+// ===========================================================================
+// 1.26 — INVENTÁRIO
+// ===========================================================================
+
+model Inventario {
+  id     String @id @default(cuid())
+  numero String @unique
+  /// EM_CONTAGEM | EM_CONFERENCIA | CONCLUIDO | CANCELADO
+  status String @default("EM_CONTAGEM")
+  observacao String?
+  iniciadoEm   DateTime  @default(now())
+  finalizadoEm DateTime?
+
+  detentor   Detentor @relation(fields: [detentorId], references: [id])
+  detentorId String
+
+  iniciadoPor   Usuario @relation(fields: [iniciadoPorId], references: [id])
+  iniciadoPorId String
+
+  itens      InventarioItem[]
+  movimentos Movimento[]
+}
+
+model InventarioItem {
+  id                String  @id @default(cuid())
+  quantidadeSistema Float
+  quantidadeContada Float?
+  diferenca         Float?
+  ajustado          Boolean @default(false)
+  observacao        String?
+
+  inventario   Inventario @relation(fields: [inventarioId], references: [id], onDelete: Cascade)
+  inventarioId String
+  material     Material   @relation(fields: [materialId], references: [id])
+  materialId   String
+
+  @@unique([inventarioId, materialId])
+}
+
+// ===========================================================================
+// 1.24 — AUDITORIA
+// ===========================================================================
+
+model Auditoria {
+  id        String   @id @default(cuid())
+  entidade  String // Material | Entrada | Movimentacao | UnidadeSerial | Inventario | ...
+  entidadeId String
+  /// CRIACAO | EDICAO | EXCLUSAO | RECEBIMENTO | MOVIMENTACAO | DEVOLUCAO |
+  /// BAIXA | AJUSTE | TRIAGEM | RESERVA | INVENTARIO
+  acao      String
+  descricao String
+  /// snapshots serializados em JSON (SQLite não tem tipo Json)
+  antes     String?
+  depois    String?
+  criadoEm  DateTime @default(now())
+
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  usuarioId String
+
+  @@index([entidade, entidadeId])
+  @@index([criadoEm])
+}
+
+// ===========================================================================
+// 1.16 — REGRAS CONFIGURÁVEIS
+// ===========================================================================
+
+model Configuracao {
+  chave        String   @id
+  valor        String
+  descricao    String?
+  atualizadoEm DateTime @updatedAt
+}
+
+// ===========================================================================
+// BLOCO 2 — ORDENS DE SERVIÇO (estrutura preparada)
+// ===========================================================================
+
+model OrdemServico {
+  id     String  @id @default(cuid())
+  idSgp  String? @unique
+  numero String  @unique
+
+  tipo      String
+  subtipo   String?
+  titulo    String?
+  descricao String?
+
+  cliente       String?
+  codigoCliente String?
+  contrato      String?
+
+  endereco  String?
+  bairroNome String?
+  cidade    String?
+  latitude  Float?
+  longitude Float?
+
+  abertaEm     DateTime  @default(now())
+  prazo        DateTime?
+  agendadaPara DateTime?
+  concluidaEm  DateTime?
+
+  status     String  @default("ABERTA")
+  severidade String  @default("MEDIA")
+  prioridade String  @default("P3")
+  sla        Int? // minutos
+  setor      String?
+  origem     String  @default("SGP")
+
+  atualizadoEm DateTime @updatedAt
+
+  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String?
+  equipe    Equipe?  @relation(fields: [equipeId], references: [id])
+  equipeId  String?
+
+  bairro   Bairro? @relation(fields: [bairroId], references: [id])
+  bairroId String?
+
+  movimentacoes      Movimentacao[]
+  movimentos         Movimento[]
+  reservas           Reserva[]
+  materiaisPrevistos MaterialPrevistoOS[]
+
+  @@index([status])
+  @@index([severidade])
+}
+
+/// 2.36 / 2.38 — materiais previstos por OS, ponte direta com o Bloco 1
+model MaterialPrevistoOS {
+  id         String @id @default(cuid())
+  quantidade Float
+
+  ordemServico   OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  ordemServicoId String
+  material       Material     @relation(fields: [materialId], references: [id])
+  materialId     String
+
+  @@unique([ordemServicoId, materialId])
+}
+
+// ===========================================================================
+// BLOCO 3 — GEOLOCALIZAÇÃO (estrutura preparada)
+// ===========================================================================
+
+model Regiao {
+  id       String   @id @default(cuid())
+  nome     String   @unique
+  criadoEm DateTime @default(now())
+
+  bairros Bairro[]
+}
+
+model Bairro {
+  id     String @id @default(cuid())
+  nome   String
+  cidade String
+
+  regiao   Regiao? @relation(fields: [regiaoId], references: [id])
+  regiaoId String?
+
+  responsavelPrincipal   Tecnico? @relation("BairroPrincipal", fields: [responsavelPrincipalId], references: [id])
+  responsavelPrincipalId String?
+  responsavelSecundario   Tecnico? @relation("BairroSecundario", fields: [responsavelSecundarioId], references: [id])
+  responsavelSecundarioId String?
+
+  equipe   Equipe? @relation(fields: [equipeId], references: [id])
+  equipeId String?
+
+  ordens OrdemServico[]
+
+  @@unique([nome, cidade])
+}
+
+// ---------------------------------------------------------------------------
+// FROTA — a localização vem do rastreador do veículo, não do celular.
+//
+// O rastreador sabe onde está o CARRO. Só o vínculo veículo↔técnico, mantido
+// na Central de Controle, transforma isso em "onde está o técnico".
+// ---------------------------------------------------------------------------
+
+model Veiculo {
+  id        String   @id @default(cuid())
+  placa     String   @unique
+  apelido   String?
+  modelo    String?
+  /// identificador do equipamento na plataforma de rastreamento
+  rastreador String? @unique
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  /// quem está com o veículo agora (denormalizado a partir do vínculo aberto)
+  tecnicoAtual   Tecnico? @relation("VeiculoTecnicoAtual", fields: [tecnicoAtualId], references: [id])
+  tecnicoAtualId String?
+
+  /// o estoque que viaja dentro do veículo, quando existir
+  estoque   Estoque? @relation(fields: [estoqueId], references: [id])
+  estoqueId String?  @unique
+
+  posicoes PosicaoVeiculo[]
+  vinculos VinculoVeiculo[]
+
+  @@index([tecnicoAtualId])
+}
+
+/// histórico de quem dirigiu qual veículo — base da auditoria de localização
+model VinculoVeiculo {
+  id     String    @id @default(cuid())
+  inicio DateTime  @default(now())
+  fim    DateTime?
+  observacao String?
+
+  veiculo   Veiculo @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
+  veiculoId String
+  tecnico   Tecnico @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String
+
+  criadoPor   Usuario @relation(fields: [criadoPorId], references: [id])
+  criadoPorId String
+
+  @@index([veiculoId, inicio])
+  @@index([tecnicoId, inicio])
+}
+
+model PosicaoVeiculo {
+  id          String   @id @default(cuid())
+  latitude    Float
+  longitude   Float
+  velocidade  Float?
+  ignicao     Boolean?
+  endereco    String?
+  /// RASTREADOR | MANUAL | DERIVADA_OS
+  origem      String   @default("RASTREADOR")
+  capturadoEm DateTime @default(now())
+  recebidoEm  DateTime @default(now())
+
+  veiculo   Veiculo @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
+  veiculoId String
+
+  @@index([veiculoId, capturadoEm])
+  @@index([capturadoEm])
+}
+
+model LocalizacaoTecnico {
+  id          String   @id @default(cuid())
+  latitude    Float
+  longitude   Float
+  precisao    Float?
+  statusOperacional String?
+  origem      String   @default("NAVEGADOR")
+  capturadoEm DateTime @default(now())
+
+  tecnico   Tecnico @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String
+
+  @@index([tecnicoId, capturadoEm])
+}

@@ -1,26 +1,232 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Console operacional — paleta densa, legível em turno noturno e em campo.
+   Claro por padrão, escuro via preferência do sistema ou data-theme.
+--------------------------------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --fundo: #f4f5f7;
+  --superficie: #ffffff;
+  --superficie-2: #fafbfc;
+  --superficie-3: #eef0f3;
+  --borda: #dfe3e8;
+  --borda-forte: #c7cdd6;
+  --texto: #12161c;
+  --texto-2: #545c6a;
+  --texto-3: #838b98;
+
+  --acento: #1f5fd6;
+  --acento-suave: #e6edfb;
+  --acento-texto: #17458f;
+
+  --positivo: #0f7a4d;
+  --positivo-suave: #e0f3e9;
+  --atencao: #a35c00;
+  --atencao-suave: #fbeed7;
+  --critico: #bb2124;
+  --critico-suave: #fbe4e4;
+  --roxo: #6d3fbb;
+  --roxo-suave: #eee7fb;
+  --informativo: #1f5fd6;
+  --informativo-suave: #e6edfb;
+  --neutro: #545c6a;
+  --neutro-suave: #eceef1;
+
+  --sombra: 0 1px 2px rgb(16 22 30 / 0.06), 0 1px 3px rgb(16 22 30 / 0.04);
+  --sombra-alta: 0 8px 28px rgb(16 22 30 / 0.14);
+  --raio: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fundo: #0c0f14;
+    --superficie: #141920;
+    --superficie-2: #181e26;
+    --superficie-3: #1f2630;
+    --borda: #262e3a;
+    --borda-forte: #36404e;
+    --texto: #e9edf3;
+    --texto-2: #a2acbb;
+    --texto-3: #737f8f;
+
+    --acento: #5b93f5;
+    --acento-suave: #16233c;
+    --acento-texto: #a8c6fc;
+
+    --positivo: #4ec78e;
+    --positivo-suave: #10281d;
+    --atencao: #e0a344;
+    --atencao-suave: #2b2010;
+    --critico: #f2777a;
+    --critico-suave: #2e1618;
+    --roxo: #ab8bf0;
+    --roxo-suave: #211a34;
+    --informativo: #5b93f5;
+    --informativo-suave: #16233c;
+    --neutro: #a2acbb;
+    --neutro-suave: #1e242d;
+
+    --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
+    --sombra-alta: 0 10px 34px rgb(0 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  --fundo: #0c0f14;
+  --superficie: #141920;
+  --superficie-2: #181e26;
+  --superficie-3: #1f2630;
+  --borda: #262e3a;
+  --borda-forte: #36404e;
+  --texto: #e9edf3;
+  --texto-2: #a2acbb;
+  --texto-3: #737f8f;
+
+  --acento: #5b93f5;
+  --acento-suave: #16233c;
+  --acento-texto: #a8c6fc;
+
+  --positivo: #4ec78e;
+  --positivo-suave: #10281d;
+  --atencao: #e0a344;
+  --atencao-suave: #2b2010;
+  --critico: #f2777a;
+  --critico-suave: #2e1618;
+  --roxo: #ab8bf0;
+  --roxo-suave: #211a34;
+  --informativo: #5b93f5;
+  --informativo-suave: #16233c;
+  --neutro: #a2acbb;
+  --neutro-suave: #1e242d;
+
+  --sombra: 0 1px 2px rgb(0 0 0 / 0.4);
+  --sombra-alta: 0 10px 34px rgb(0 0 0 / 0.55);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-fundo: var(--fundo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-superficie-3: var(--superficie-3);
+  --color-borda: var(--borda);
+  --color-borda-forte: var(--borda-forte);
+  --color-texto: var(--texto);
+  --color-texto-2: var(--texto-2);
+  --color-texto-3: var(--texto-3);
+  --color-acento: var(--acento);
+  --color-acento-suave: var(--acento-suave);
+  --color-acento-texto: var(--acento-texto);
+  --color-positivo: var(--positivo);
+  --color-positivo-suave: var(--positivo-suave);
+  --color-atencao: var(--atencao);
+  --color-atencao-suave: var(--atencao-suave);
+  --color-critico: var(--critico);
+  --color-critico-suave: var(--critico-suave);
+  --color-roxo: var(--roxo);
+  --color-roxo-suave: var(--roxo-suave);
+  --color-informativo: var(--informativo);
+  --color-informativo-suave: var(--informativo-suave);
+  --color-neutro: var(--neutro);
+  --color-neutro-suave: var(--neutro-suave);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--borda);
+}
+
+html {
+  color-scheme: light dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* números tabulares em toda quantidade exibida */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--borda-forte);
+  border-radius: 999px;
+  border: 3px solid var(--fundo);
+}
+
+/* ------------------------------------------------------------------ formulários */
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  background: var(--superficie);
+  border: 1px solid var(--borda-forte);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--texto-3);
+}
+
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--texto-2) 50%),
+    linear-gradient(135deg, var(--texto-2) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 1.9rem;
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+@media print {
+  .sem-impressao {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
 }
