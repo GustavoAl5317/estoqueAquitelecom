@@ -74,8 +74,15 @@ function mac(i: number) {
 
 // --------------------------------------------------------------------------
 
+/**
+ * A ordem importa: cada tabela só pode ser apagada depois de quem aponta para
+ * ela. A frota vem cedo porque Veiculo referencia Tecnico e Estoque.
+ */
 async function limpar() {
   const tabelas = [
+    prisma.posicaoVeiculo,
+    prisma.vinculoVeiculo,
+    prisma.veiculo,
     prisma.movimentacaoItemSerial,
     prisma.movimentacaoItem,
     prisma.movimento,
