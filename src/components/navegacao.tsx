@@ -10,16 +10,21 @@ import {
   BrainCircuit,
   ClipboardCheck,
   ClipboardList,
+  Columns3,
   FileBarChart,
   History,
   LayoutDashboard,
+  Map,
   Menu,
   PackagePlus,
+  PackageSearch,
   Radio,
   Recycle,
+  Route,
   ScanLine,
   Settings,
   ShieldCheck,
+  Sparkles,
   Warehouse,
   X,
 } from "lucide-react";
@@ -31,8 +36,18 @@ const GRUPOS = [
     itens: [
       { href: "/", rotulo: "Dashboard", icone: LayoutDashboard },
       { href: "/central", rotulo: "Central de Controle", icone: Radio },
+      { href: "/fila", rotulo: "Fila inteligente", icone: Sparkles },
       { href: "/alertas", rotulo: "Alertas", icone: AlertTriangle },
       { href: "/analise", rotulo: "Análise e previsão", icone: BrainCircuit },
+    ],
+  },
+  {
+    titulo: "Campo",
+    itens: [
+      { href: "/os", rotulo: "Ordens de serviço", icone: ClipboardList, exato: true },
+      { href: "/os/quadro", rotulo: "Quadro operacional", icone: Columns3 },
+      { href: "/roteiro", rotulo: "Roteiro do dia", icone: Route },
+      { href: "/regioes", rotulo: "Regiões e bairros", icone: Map },
     ],
   },
   {
@@ -48,10 +63,10 @@ const GRUPOS = [
     itens: [
       { href: "/entradas", rotulo: "Entradas", icone: PackagePlus },
       { href: "/movimentacoes", rotulo: "Saídas e transferências", icone: ArrowLeftRight },
-      { href: "/ordens", rotulo: "Material por OS", icone: ClipboardCheck },
+      { href: "/ordens", rotulo: "Material por OS", icone: PackageSearch },
       { href: "/triagem", rotulo: "Logística reversa", icone: Recycle },
       { href: "/reservas", rotulo: "Reservas", icone: ShieldCheck },
-      { href: "/inventario", rotulo: "Inventário", icone: ClipboardList },
+      { href: "/inventario", rotulo: "Inventário", icone: ClipboardCheck },
     ],
   },
   {
@@ -64,9 +79,14 @@ const GRUPOS = [
   },
 ];
 
-function estaAtivo(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+/**
+ * `exato` existe para "/os": sem ele, o item da lista ficaria aceso junto com
+ * "/os/quadro", e dois itens acesos ao mesmo tempo dizem ao usuário que ele
+ * está em dois lugares.
+ */
+function estaAtivo(pathname: string, item: { href: string; exato?: boolean }) {
+  if (item.href === "/" || item.exato) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 function Itens({ aoNavegar }: { aoNavegar?: () => void }) {
@@ -81,7 +101,7 @@ function Itens({ aoNavegar }: { aoNavegar?: () => void }) {
           </p>
           <ul className="space-y-0.5">
             {grupo.itens.map((item) => {
-              const ativo = estaAtivo(pathname, item.href);
+              const ativo = estaAtivo(pathname, item);
               const Icone = item.icone;
               return (
                 <li key={item.href}>

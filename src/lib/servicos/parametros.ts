@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { numero } from "@/lib/utils";
 
 /**
  * 3.55 — PESOS DO SCORE OPERACIONAL.
@@ -109,7 +110,7 @@ export function calcularScore(
   const limite = Math.max(p.raioAtuacaoKm * 2, 1);
   const notaDistancia = Math.max(0, 1 - candidato.distanciaKm / limite);
   if (candidato.distanciaKm <= p.raioAtuacaoKm) {
-    motivos.push(`Está a ${candidato.distanciaKm.toFixed(1)} km`);
+    motivos.push(`Está a ${numero(candidato.distanciaKm, 1)} km`);
   }
 
   // carga: quem tem menos OS que a média pontua mais

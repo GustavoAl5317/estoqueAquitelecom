@@ -913,17 +913,236 @@ async function main() {
   }
 
   // ------------------------------------------------------------------ Blocos 2 e 3
+  console.log("Regiões, bairros e ordens de serviço…");
+
   const regiao = await prisma.regiao.create({ data: { nome: "Região Sul 01" } });
-  const bairros = ["Messejana", "Cambeba", "Lagoa Redonda", "Aldeota", "Parangaba"];
-  for (const [i, nome] of bairros.entries()) {
-    await prisma.bairro.create({
+  const regiaoNorte = await prisma.regiao.create({ data: { nome: "Região Norte 02" } });
+
+  // bairro com coordenada aproximada do centro — é o que dá endereço às OS
+  const bairrosDados = [
+    { nome: "Messejana", lat: -3.8302, lng: -38.4926, regiao: regiao.id },
+    { nome: "Cambeba", lat: -3.8098, lng: -38.4795, regiao: regiao.id },
+    { nome: "Lagoa Redonda", lat: -3.8218, lng: -38.4482, regiao: regiao.id },
+    { nome: "Aldeota", lat: -3.7355, lng: -38.4996, regiao: regiaoNorte.id },
+    { nome: "Parangaba", lat: -3.7768, lng: -38.5591, regiao: regiaoNorte.id },
+    { nome: "Montese", lat: -3.7628, lng: -38.5449, regiao: null },
+  ];
+
+  const bairros = [];
+  for (const [i, dados] of bairrosDados.entries()) {
+    const bairro = await prisma.bairro.create({
       data: {
-        nome,
+        nome: dados.nome,
         cidade: "Fortaleza",
-        regiaoId: i < 3 ? regiao.id : null,
-        responsavelPrincipalId: tecnicos[i % tecnicos.length].tecnico.id,
-        responsavelSecundarioId: tecnicos[(i + 1) % tecnicos.length].tecnico.id,
+        regiaoId: dados.regiao,
+        // o último fica de propósito sem responsável, para a tela ter o que apontar
+        responsavelPrincipalId:
+          i < bairrosDados.length - 1
+            ? tecnicos[i % tecnicos.length].tecnico.id
+            : null,
+        responsavelSecundarioId:
+          i < bairrosDados.length - 1
+            ? tecnicos[(i + 1) % tecnicos.length].tecnico.id
+            : null,
         equipeId: equipes[i % equipes.length].equipe.id,
+      },
+    });
+    bairros.push({ ...dados, id: bairro.id });
+  }
+
+  // ------------------------------------------------------ ordens de serviço
+  //
+  // Duas levas: as concluídas, que dão histórico e aderência de SLA, e as
+  // abertas, que enchem o quadro, o roteiro e a fila. As abertas precisam ser
+  // plausíveis para que a recomendação faça sentido — por isso ficam perto dos
+  // bairros e distribuídas entre com e sem responsável.
+
+  const CLIENTES = [
+    "Maria", "José", "Ana", "Antônio", "Francisca",
+    "Carlos", "Luciana", "Paulo", "Fernanda", "Ricardo",
+    "Juliana", "Marcelo", "Patrícia", "Rodrigo", "Camila",
+  ];
+  const SOBRENOMES = [
+    "Silva", "Souza", "Oliveira", "Lima", "Costa", "Rodrigues",
+    "Alves", "Pereira", "Gomes", "Martins", "Araújo", "Barbosa",
+  ];
+  const nomeCliente = () =>
+    `${escolher(CLIENTES)} ${escolher(SOBRENOMES)}`;
+
+  const TIPOS_OS = [
+    { tipo: "INSTALACAO", sla: 480, titulo: "Instalação de ponto novo" },
+    { tipo: "REPARO", sla: 240, titulo: "Sem conexão" },
+    { tipo: "REPARO", sla: 240, titulo: "Oscilação de sinal" },
+    { tipo: "MANUTENCAO", sla: 480, titulo: "Troca de equipamento" },
+    { tipo: "MUDANCA_ENDERECO", sla: 1440, titulo: "Mudança de endereço" },
+    { tipo: "RETIRADA", sla: 2880, titulo: "Retirada por cancelamento" },
+    { tipo: "UPGRADE", sla: 1440, titulo: "Upgrade de plano" },
+    { tipo: "VISTORIA", sla: 2880, titulo: "Vistoria de rede" },
+  ];
+
+  const RUAS = [
+    "Rua das Acácias", "Av. Perimetral", "Rua João Pessoa", "Trav. do Farol",
+    "Rua São Bento", "Av. dos Expedicionários", "Rua Boa Esperança",
+    "Rua Nova Aurora", "Av. Central", "Rua do Contorno",
+  ];
+
+  /** ponto aleatório dentro de ~1,5 km do centro do bairro */
+  const pertoDe = (b: { lat: number; lng: number }) => ({
+    latitude: b.lat + (aleatorio() - 0.5) * 0.026,
+    longitude: b.lng + (aleatorio() - 0.5) * 0.026,
+  });
+
+  let sequenciaOS = 1;
+  const proximoNumeroOS = () =>
+    `OS-2026-${String(sequenciaOS++).padStart(4, "0")}`;
+
+  const ordensConcluidas = [];
+  for (let i = 0; i < 46; i++) {
+    const modelo = escolher(TIPOS_OS);
+    const bairro = escolher(bairros);
+    const tec = escolher(tecnicos);
+    const abertaEm = diasAtras(inteiro(3, 70), inteiro(7, 16));
+    const prazo = new Date(abertaEm.getTime() + modelo.sla * 60_000);
+    // a maioria fecha no prazo; o resto é o que faz a métrica de SLA existir
+    const concluidaEm = new Date(
+      abertaEm.getTime() +
+        (chance(0.82) ? inteiro(40, modelo.sla - 30) : modelo.sla + inteiro(30, 600)) *
+          60_000,
+    );
+
+    const ordem = await prisma.ordemServico.create({
+      data: {
+        numero: proximoNumeroOS(),
+        tipo: modelo.tipo,
+        titulo: modelo.titulo,
+        cliente: nomeCliente(),
+        contrato: String(inteiro(1000, 9999)),
+        endereco: `${escolher(RUAS)}, ${inteiro(10, 1800)}`,
+        bairroId: bairro.id,
+        bairroNome: bairro.nome,
+        cidade: "Fortaleza",
+        ...pertoDe(bairro),
+        prioridade: escolher(["P2", "P3", "P3", "P3", "P4"]),
+        severidade: escolher(["ALTA", "MEDIA", "MEDIA", "BAIXA"]),
+        sla: modelo.sla,
+        prazo,
+        abertaEm,
+        concluidaEm,
+        status: "CONCLUIDA",
+        origem: "SGP",
+        idSgp: `SGP-${inteiro(100000, 999999)}`,
+        tecnicoId: tec.tecnico.id,
+        equipeId: tec.tecnico.equipeId,
+      },
+    });
+    ordensConcluidas.push(ordem);
+  }
+
+  // amarra o material que já saiu às OS concluídas, para que a tela de
+  // "material por OS" mostre custo real por atendimento
+  const instalacoes = await prisma.movimentacao.findMany({
+    where: { finalidade: "INSTALACAO", ordemServicoId: null },
+    orderBy: { criadoEm: "desc" },
+    take: ordensConcluidas.length,
+  });
+  for (const [i, movimentacao] of instalacoes.entries()) {
+    const ordem = ordensConcluidas[i % ordensConcluidas.length];
+    await prisma.movimentacao.update({
+      where: { id: movimentacao.id },
+      data: { ordemServicoId: ordem.id },
+    });
+    await prisma.movimento.updateMany({
+      where: { movimentacaoId: movimentacao.id },
+      data: { ordemServicoId: ordem.id },
+    });
+  }
+
+  // --- as abertas, que é o que aparece no quadro e na fila -----------------
+  const materiaisComuns = [...materiais.entries()].filter(([codigo]) =>
+    ["ONU-HW-8145", "RTR-TPL-AC1200", "CBO-DROP-1FO", "CON-SC-APC"].includes(
+      codigo,
+    ),
+  );
+
+  const DISTRIBUICAO_ABERTAS = [
+    { status: "ABERTA", quantidade: 7, comTecnico: false },
+    { status: "ATRIBUIDA", quantidade: 5, comTecnico: true },
+    { status: "EM_DESLOCAMENTO", quantidade: 3, comTecnico: true },
+    { status: "EM_ATENDIMENTO", quantidade: 3, comTecnico: true },
+    { status: "PENDENTE", quantidade: 2, comTecnico: true },
+  ];
+
+  for (const faixa of DISTRIBUICAO_ABERTAS) {
+    for (let i = 0; i < faixa.quantidade; i++) {
+      const modelo = escolher(TIPOS_OS);
+      const bairro = escolher(bairros);
+      const tec = escolher(tecnicos);
+      // algumas já nascem atrasadas — é o caso que a fila precisa destacar
+      const horasAtras = chance(0.3) ? inteiro(10, 40) : inteiro(0, 6);
+      const abertaEm = new Date(Date.now() - horasAtras * 3_600_000);
+
+      const ordem = await prisma.ordemServico.create({
+        data: {
+          numero: proximoNumeroOS(),
+          tipo: modelo.tipo,
+          titulo: modelo.titulo,
+          cliente: nomeCliente(),
+          contrato: String(inteiro(1000, 9999)),
+          endereco: `${escolher(RUAS)}, ${inteiro(10, 1800)}`,
+          bairroId: bairro.id,
+          bairroNome: bairro.nome,
+          cidade: "Fortaleza",
+          // uma sem coordenada, de propósito, para a tela mostrar o impedimento
+          ...(i === 0 && faixa.status === "ABERTA"
+            ? { latitude: null, longitude: null }
+            : pertoDe(bairro)),
+          prioridade: escolher(["P1", "P2", "P2", "P3", "P3", "P4"]),
+          severidade: escolher(["CRITICA", "ALTA", "MEDIA", "MEDIA"]),
+          sla: modelo.sla,
+          prazo: new Date(abertaEm.getTime() + modelo.sla * 60_000),
+          abertaEm,
+          status: faixa.status,
+          origem: chance(0.7) ? "SGP" : "CENTRAL",
+          tecnicoId: faixa.comTecnico ? tec.tecnico.id : null,
+          equipeId: faixa.comTecnico ? tec.tecnico.equipeId : null,
+        },
+      });
+
+      // 4.7 — material previsto: é o que o score confere na posse do técnico
+      if (chance(0.55) && materiaisComuns.length) {
+        const escolhidos = materiaisComuns.filter(() => chance(0.5));
+        for (const [, material] of escolhidos.length
+          ? escolhidos
+          : [materiaisComuns[0]]) {
+          await prisma.materialPrevistoOS.create({
+            data: {
+              ordemServicoId: ordem.id,
+              materialId: material.id,
+              quantidade:
+                material.controle === "SERIAL" ? 1 : inteiro(1, 30),
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // 3.11 — o status do técnico precisa refletir a OS em que ele está
+  for (const tec of tecnicos) {
+    const emCampo = await prisma.ordemServico.findFirst({
+      where: {
+        tecnicoId: tec.tecnico.id,
+        status: { in: ["EM_DESLOCAMENTO", "EM_ATENDIMENTO"] },
+      },
+    });
+    await prisma.tecnico.update({
+      where: { id: tec.tecnico.id },
+      data: {
+        status: emCampo
+          ? emCampo.status === "EM_ATENDIMENTO"
+            ? "EM_ATENDIMENTO"
+            : "EM_DESLOCAMENTO"
+          : "DISPONIVEL",
       },
     });
   }
@@ -935,6 +1154,9 @@ async function main() {
     prisma.movimentacao.count(),
     prisma.entrada.count(),
     prisma.triagem.count(),
+    prisma.ordemServico.count(),
+    prisma.ordemServico.count({ where: { status: { not: "CONCLUIDA" } } }),
+    prisma.bairro.count(),
   ]);
 
   console.log(`
@@ -945,6 +1167,8 @@ Base populada:
   ${resumo[3]} movimentações
   ${resumo[4]} entradas
   ${resumo[5]} registros de triagem
+  ${resumo[6]} ordens de serviço (${resumo[7]} em aberto)
+  ${resumo[8]} bairros mapeados
   ${tecnicos.length} técnicos, ${equipes.length} equipes, ${estoques.length} estoques
 `);
 }

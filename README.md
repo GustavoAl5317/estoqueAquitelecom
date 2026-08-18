@@ -116,9 +116,42 @@ src/
       triagem.ts       logística reversa
       consultas.ts     leitura para telas e relatórios
       analise.ts       previsão de consumo e detecção de anomalias
+      ordens.ts        ciclo de vida da OS, SLA e quadro
+      regioes.ts       bairros, responsáveis e cobertura
+      roteiro.ts       ordem de visita por proximidade e urgência
+      fila.ts          recomendação de técnico por OS (Bloco 4)
       frota.ts         veículos, vínculo com técnico e posição
       traccar.ts       conector da plataforma de rastreamento
 ```
+
+### A OS é a unidade de trabalho, não o cadastro do cliente
+
+Da ordem de serviço guardamos o que a operação precisa para decidir: número,
+cliente, endereço, prioridade e prazo. O cadastro completo continua no SGP. Isso
+mantém o sistema útil mesmo quando a integração está fora do ar — e evita manter
+duas verdades sobre o mesmo cliente.
+
+O quadro (`/os/quadro`) permite mover a OS pelo fluxo arrastando o cartão. As
+transições são livres de propósito: campo raramente segue o fluxo desenhado, e
+travar o quadro só faria o supervisor registrar errado. O que o sistema garante
+é que nada avança sem responsável e que a conclusão carimba a data.
+
+### Roteiro é ordem de visita, não traçado de rua
+
+O sistema não sabe onde tem semáforo. Sabe onde o técnico está, onde estão as OS
+dele e o que é urgente — e com isso responde a pergunta que o supervisor faz de
+verdade: **em que ordem atender**. O algoritmo é vizinho mais próximo com viés de
+prioridade, e a tela mostra quanto isso economiza em relação a atender na ordem
+de chegada.
+
+### A recomendação nunca atribui sozinha
+
+A fila inteligente (`/fila`) cruza urgência, distância, carga e material em posse,
+e devolve os três melhores técnicos para cada OS — **com os motivos escritos ao
+lado**. Cada recomendação vira um botão, não um fato. Um número de 0 a 100
+sozinho não sustenta uma decisão que envolve gente.
+
+Os pesos de cada critério são ajustáveis na Central de Controle.
 
 ---
 
@@ -201,12 +234,24 @@ técnico / equipe, histórico completo, auditoria, ajuste manual, inventário,
 código de barras, busca global, filtros, relatórios com exportação CSV, previsão
 de consumo e detecção de anomalias.
 
-**Bloco 2 — Ordens de Serviço:** vínculo leve implementado (material por OS). A
-sincronização com o SGP depende de liberação de permissão no token.
+**Bloco 2 — Ordens de Serviço:** cadastro e edição, lista com filtros, quadro
+operacional com arrastar-e-soltar, atribuição de responsável, prioridade,
+severidade, SLA com situação de prazo, carga por técnico, aderência ao SLA e
+material aplicado por atendimento. A importação automática do SGP ainda não
+traz dados — ver abaixo.
 
 **Bloco 3 — Geolocalização:** Central de Controle, frota, vínculo
-veículo↔técnico, ingestão de posições, mapa operacional e parâmetros de análise
-configuráveis. Kanban e roteirização pendentes.
+veículo↔técnico, ingestão de posições, mapa operacional, replay de trajeto com
+detecção de paradas, regiões e bairros com responsável principal e reserva,
+roteirização por proximidade e parâmetros de análise configuráveis.
 
-**Bloco 4 — Inteligência:** motor de score operacional pronto (`parametros.ts`),
-com pesos ajustáveis pelo supervisor. Fila inteligente pendente.
+**Bloco 4 — Inteligência:** fila inteligente com recomendação explicada,
+score configurável e leitura da operação em linguagem corrente.
+
+### O que falta
+
+- **Autenticação.** Não há tela de login; o responsável vem de um seletor.
+- **Importação de OS do SGP.** A rota `/api/os/list/` responde 200 mas devolve
+  lista vazia mesmo com o token liberado — provavelmente o usuário mapeado ao
+  token não enxerga ordens de serviço.
+- **Produção.** SQLite → PostgreSQL, serviço, HTTPS e backup.

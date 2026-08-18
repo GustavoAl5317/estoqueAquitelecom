@@ -283,6 +283,125 @@ export const NIVEL_ESTOQUE = dicionario([
 ] as const as Opcao<string>[]);
 
 // ---------------------------------------------------------------------------
+// BLOCO 2 — Ordem de serviço
+// ---------------------------------------------------------------------------
+
+/**
+ * 2.5 — O ciclo de vida da OS.
+ *
+ * A ordem desta lista é a ordem das colunas do quadro: mover para a direita é
+ * avançar o atendimento. Só ABERTA aceita OS sem técnico; a partir de
+ * ATRIBUIDA o responsável passa a ser obrigatório.
+ */
+export const STATUS_OS = dicionario([
+  { valor: "ABERTA", rotulo: "Aberta", tom: "neutro" },
+  { valor: "ATRIBUIDA", rotulo: "Atribuída", tom: "informativo" },
+  { valor: "EM_DESLOCAMENTO", rotulo: "Em deslocamento", tom: "roxo" },
+  { valor: "EM_ATENDIMENTO", rotulo: "Em atendimento", tom: "roxo" },
+  { valor: "PENDENTE", rotulo: "Pendente", tom: "atencao" },
+  { valor: "CONCLUIDA", rotulo: "Concluída", tom: "positivo" },
+  { valor: "CANCELADA", rotulo: "Cancelada", tom: "neutro" },
+] as const as Opcao<string>[]);
+
+/** colunas do quadro (2.20) — as duas finais ficam fora do fluxo diário */
+export const COLUNAS_QUADRO = [
+  "ABERTA",
+  "ATRIBUIDA",
+  "EM_DESLOCAMENTO",
+  "EM_ATENDIMENTO",
+  "PENDENTE",
+  "CONCLUIDA",
+];
+
+/** status em que a OS ainda consome capacidade da operação */
+export const STATUS_OS_ABERTOS = [
+  "ABERTA",
+  "ATRIBUIDA",
+  "EM_DESLOCAMENTO",
+  "EM_ATENDIMENTO",
+  "PENDENTE",
+];
+
+/** a partir daqui a OS precisa de responsável */
+export const STATUS_OS_EXIGEM_TECNICO = [
+  "ATRIBUIDA",
+  "EM_DESLOCAMENTO",
+  "EM_ATENDIMENTO",
+];
+
+export const STATUS_OS_ENCERRADOS = ["CONCLUIDA", "CANCELADA"];
+
+export const TIPO_OS = dicionario([
+  { valor: "INSTALACAO", rotulo: "Instalação", tom: "informativo" },
+  { valor: "REPARO", rotulo: "Reparo", tom: "atencao" },
+  { valor: "MANUTENCAO", rotulo: "Manutenção", tom: "atencao" },
+  { valor: "MUDANCA_ENDERECO", rotulo: "Mudança de endereço", tom: "roxo" },
+  { valor: "RETIRADA", rotulo: "Retirada de equipamento", tom: "critico" },
+  { valor: "UPGRADE", rotulo: "Upgrade de plano", tom: "positivo" },
+  { valor: "VISTORIA", rotulo: "Vistoria", tom: "neutro" },
+  { valor: "INFRAESTRUTURA", rotulo: "Infraestrutura", tom: "neutro" },
+  { valor: "NAO_INFORMADO", rotulo: "Não informado", tom: "neutro" },
+] as const as Opcao<string>[]);
+
+export const PRIORIDADE_OS = dicionario([
+  { valor: "P1", rotulo: "P1 — Emergencial", tom: "critico" },
+  { valor: "P2", rotulo: "P2 — Alta", tom: "atencao" },
+  { valor: "P3", rotulo: "P3 — Normal", tom: "informativo" },
+  { valor: "P4", rotulo: "P4 — Baixa", tom: "neutro" },
+] as const as Opcao<string>[]);
+
+/** peso da prioridade na ordenação da fila (4.3) */
+export const PESO_PRIORIDADE: Record<string, number> = {
+  P1: 100,
+  P2: 60,
+  P3: 30,
+  P4: 10,
+};
+
+export const SEVERIDADE_OS = dicionario([
+  { valor: "CRITICA", rotulo: "Crítica", tom: "critico" },
+  { valor: "ALTA", rotulo: "Alta", tom: "atencao" },
+  { valor: "MEDIA", rotulo: "Média", tom: "informativo" },
+  { valor: "BAIXA", rotulo: "Baixa", tom: "neutro" },
+] as const as Opcao<string>[]);
+
+export const ORIGEM_OS = dicionario([
+  { valor: "SGP", rotulo: "SGP", tom: "informativo" },
+  { valor: "LANCAMENTO_MANUAL", rotulo: "Lançamento manual", tom: "neutro" },
+  { valor: "CENTRAL", rotulo: "Central de Controle", tom: "roxo" },
+] as const as Opcao<string>[]);
+
+/** 3.11 — em que pé está o técnico agora */
+export const STATUS_TECNICO = dicionario([
+  { valor: "DISPONIVEL", rotulo: "Disponível", tom: "positivo" },
+  { valor: "EM_DESLOCAMENTO", rotulo: "Em deslocamento", tom: "informativo" },
+  { valor: "EM_ATENDIMENTO", rotulo: "Em atendimento", tom: "roxo" },
+  { valor: "PAUSADO", rotulo: "Pausado", tom: "atencao" },
+  { valor: "AGUARDANDO_MATERIAL", rotulo: "Aguardando material", tom: "atencao" },
+  { valor: "AGUARDANDO_CLIENTE", rotulo: "Aguardando cliente", tom: "atencao" },
+  { valor: "RETORNANDO_BASE", rotulo: "Retornando à base", tom: "neutro" },
+  { valor: "FORA_JORNADA", rotulo: "Fora da jornada", tom: "neutro" },
+  { valor: "INDISPONIVEL", rotulo: "Indisponível", tom: "critico" },
+] as const as Opcao<string>[]);
+
+/** status do técnico que permitem receber uma OS nova */
+export const STATUS_TECNICO_ALOCAVEIS = [
+  "DISPONIVEL",
+  "EM_DESLOCAMENTO",
+  "RETORNANDO_BASE",
+];
+
+/** 2.28 — como está o prazo da OS */
+export const SITUACAO_SLA = dicionario([
+  { valor: "SEM_PRAZO", rotulo: "Sem prazo", tom: "neutro" },
+  { valor: "NO_PRAZO", rotulo: "No prazo", tom: "positivo" },
+  { valor: "ATENCAO", rotulo: "Perto do limite", tom: "atencao" },
+  { valor: "ESTOURADO", rotulo: "Prazo estourado", tom: "critico" },
+  { valor: "CONCLUIDA_NO_PRAZO", rotulo: "Concluída no prazo", tom: "positivo" },
+  { valor: "CONCLUIDA_ATRASADA", rotulo: "Concluída com atraso", tom: "critico" },
+] as const as Opcao<string>[]);
+
+// ---------------------------------------------------------------------------
 // Acesso e auditoria
 // ---------------------------------------------------------------------------
 
