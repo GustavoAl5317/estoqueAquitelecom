@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { distanciaKm, situacaoDaFrota } from "./frota";
+import { distanciaKm, posicoesDosTecnicos } from "./frota";
 import { situacaoSla } from "./ordens";
 import { PESO_PRIORIDADE, STATUS_OS_ABERTOS } from "@/lib/dominio";
 
@@ -62,7 +62,9 @@ export type Parada = {
 export type Roteiro = {
   tecnicoId: string;
   tecnicoNome: string;
-  placa: string | null;
+  /** o que revelou a posição de partida */
+  referencia: string | null;
+  fonte: "CELULAR" | "VEICULO" | null;
   partida: { latitude: number; longitude: number; descricao: string } | null;
   paradas: Parada[];
   /** OS do técnico que ficaram de fora por não terem coordenada */
@@ -89,19 +91,20 @@ export async function roteiroDoTecnico(
     orderBy: { prioridade: "asc" },
   });
 
-  const frota = await situacaoDaFrota();
-  const veiculo = frota.find((v) => v.tecnicoId === tecnicoId) ?? null;
+  // o ponto de partida é onde o técnico está — celular na frente do carro,
+  // mesma regra da fila, para as duas telas nunca discordarem
+  const posicao = (await posicoesDosTecnicos()).find(
+    (p) => p.tecnicoId === tecnicoId,
+  );
 
   const partida =
     opcoes.partirDe ??
-    (veiculo?.latitude !== null && veiculo?.latitude !== undefined && veiculo.longitude !== null
-      ? { latitude: veiculo.latitude, longitude: veiculo.longitude }
-      : null);
+    (posicao ? { latitude: posicao.latitude, longitude: posicao.longitude } : null);
 
   const descricaoPartida = opcoes.partirDe
     ? "Ponto informado"
-    : veiculo
-      ? `${veiculo.placa}${veiculo.endereco ? ` — ${veiculo.endereco}` : ""}`
+    : posicao
+      ? `${posicao.referencia} (${posicao.fonte === "CELULAR" ? "celular" : "veículo"})`
       : "";
 
   const comCoordenada = ordens.filter(
@@ -180,7 +183,8 @@ export async function roteiroDoTecnico(
   return {
     tecnicoId: tecnico.id,
     tecnicoNome: tecnico.nome,
-    placa: veiculo?.placa ?? null,
+    referencia: posicao?.referencia ?? null,
+    fonte: posicao?.fonte ?? null,
     partida: partida ? { ...partida, descricao: descricaoPartida } : null,
     paradas,
     semCoordenada,

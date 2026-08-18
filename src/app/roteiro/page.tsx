@@ -143,8 +143,10 @@ export default async function Roteiros() {
                     <Etiqueta tom="positivo">
                       −{numero(economia.economiaKm, 1)} km ({economia.economiaPercentual}%)
                     </Etiqueta>
-                  ) : roteiro.placa ? (
-                    <Etiqueta tom="neutro">{roteiro.placa}</Etiqueta>
+                  ) : roteiro.fonte ? (
+                    <Etiqueta tom={roteiro.fonte === "CELULAR" ? "roxo" : "neutro"}>
+                      {roteiro.fonte === "CELULAR" ? "pelo celular" : "pelo veículo"}
+                    </Etiqueta>
                   ) : undefined
                 }
               >
