@@ -13,7 +13,7 @@ import {
   Metrica,
   Vazio,
 } from "@/components/ui";
-import { MapaOperacional, type PontoMapa } from "@/components/mapa-operacional";
+import { MapaRuas, type PontoMapaRua } from "@/components/mapa-ruas";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +88,7 @@ export default async function Roteiros() {
           {roteiros.map((roteiro) => {
             const economia = economiaDoRoteiro(roteiro);
 
-            const pontos: PontoMapa[] = [
+            const pontos: PontoMapaRua[] = [
               ...(roteiro.partida
                 ? [
                     {
@@ -97,23 +97,23 @@ export default async function Roteiros() {
                       detalhe: "partida",
                       latitude: roteiro.partida.latitude,
                       longitude: roteiro.partida.longitude,
-                      tipo: "VEICULO" as const,
+                      cor: "var(--positivo)",
                     },
                   ]
                 : []),
-              ...roteiro.paradas.map<PontoMapa>((parada, indice) => ({
+              ...roteiro.paradas.map<PontoMapaRua>((parada, indice) => ({
                 id: parada.ordemId,
                 rotulo: `${indice + 1}. ${parada.numero}`,
                 detalhe: parada.cliente ?? undefined,
                 latitude: parada.latitude,
                 longitude: parada.longitude,
-                tipo: "OS",
-                tom:
+                cor:
                   parada.situacao === "ESTOURADO"
-                    ? "critico"
+                    ? "var(--critico)"
                     : parada.situacao === "ATENCAO"
-                      ? "atencao"
-                      : "ok",
+                      ? "var(--atencao)"
+                      : "var(--acento)",
+                href: `/os/${parada.ordemId}`,
               })),
             ];
 
@@ -214,7 +214,7 @@ export default async function Roteiros() {
                   </ol>
 
                   <div>
-                    <MapaOperacional pontos={pontos} altura={300} />
+                    <MapaRuas pontos={pontos} altura={320} />
                     {roteiro.semCoordenada.length > 0 && (
                       <p className="mt-2 text-xs text-[var(--atencao)]">
                         Fora do roteiro por falta de coordenada:{" "}

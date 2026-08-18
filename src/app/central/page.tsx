@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { Radio } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { TIPOS_ESTOQUE_SISTEMA } from "@/lib/dominio";
+import { TIPO_RASTREADOR, TIPOS_ESTOQUE_SISTEMA } from "@/lib/dominio";
 import {
   posicoesDosTecnicos,
   situacaoDosRastreadores,
   vinculosRecentes,
 } from "@/lib/servicos/frota";
 import { parametros, somaDosPesos } from "@/lib/servicos/parametros";
-import { dataHora, numero } from "@/lib/utils";
+import { dataHora, numero, tempoRelativo } from "@/lib/utils";
 import {
   Aviso,
   CabecalhoPagina,
@@ -17,7 +17,7 @@ import {
   Metrica,
   Vazio,
 } from "@/components/ui";
-import { MapaOperacional, type PontoMapa } from "@/components/mapa-operacional";
+import { MapaRuas, type PontoMapaRua } from "@/components/mapa-ruas";
 import {
   FormularioParametros,
   FormularioPosicao,
@@ -75,39 +75,38 @@ export default async function Central() {
     (r) => r.frescor === "DESATUALIZADA" || r.frescor === "SEM_SINAL",
   ).length;
 
-  const pontos: PontoMapa[] = [
+  const COR = {
+    PESSOA: "var(--roxo)",
+    VEICULO: "var(--acento)",
+    EQUIPAMENTO: "var(--positivo)",
+    NAO_CLASSIFICADO: "var(--atencao)",
+  } as const;
+
+  const pontos: PontoMapaRua[] = [
     ...rastreadores
       .filter((r) => r.latitude !== null && r.longitude !== null)
-      .map<PontoMapa>((r) => ({
+      .map<PontoMapaRua>((r) => ({
         id: r.id,
         rotulo: r.tecnicoNome ?? r.alvo ?? r.nome,
         detalhe:
-          r.tipo === "PESSOA"
-            ? "celular"
-            : r.tipo === "EQUIPAMENTO"
-              ? "equipamento"
-              : r.tipo === "VEICULO"
-                ? (r.placa ?? "veículo")
-                : "não classificado",
+          `${TIPO_RASTREADOR.rotulo(r.tipo).toLowerCase()}` +
+          (r.endereco ? ` · ${r.endereco}` : "") +
+          (r.capturadoEm ? ` · ${tempoRelativo(r.capturadoEm)}` : ""),
         latitude: r.latitude!,
         longitude: r.longitude!,
-        tipo: r.tipo === "EQUIPAMENTO" ? "ESTOQUE" : "VEICULO",
-        tom:
-          r.frescor === "ATUAL" || r.frescor === "RECENTE"
-            ? "ok"
-            : r.frescor === "DESATUALIZADA"
-              ? "atencao"
-              : "critico",
+        cor: COR[r.tipo as keyof typeof COR] ?? "var(--neutro)",
+        destaque: r.frescor === "DESATUALIZADA" || r.frescor === "SEM_SINAL",
+        href: `/rastreador/${r.id}`,
       })),
     ...estoques
       .filter((e) => e.latitude !== null && e.longitude !== null)
-      .map<PontoMapa>((e) => ({
+      .map<PontoMapaRua>((e) => ({
         id: e.id,
         rotulo: e.nome,
         detalhe: "estoque",
         latitude: e.latitude!,
         longitude: e.longitude!,
-        tipo: "ESTOQUE",
+        cor: "var(--informativo)",
       })),
   ];
 
@@ -164,9 +163,9 @@ export default async function Central() {
         <div className="space-y-4 lg:col-span-2">
           <Cartao
             titulo="Mapa operacional"
-            descricao="Posição relativa dos aparelhos e dos estoques"
+            descricao="Onde cada aparelho está agora. Roxo é celular de técnico, azul é veículo, verde é equipamento."
           >
-            <MapaOperacional pontos={pontos} />
+            <MapaRuas pontos={pontos} />
           </Cartao>
 
           {/* 3.1 */}

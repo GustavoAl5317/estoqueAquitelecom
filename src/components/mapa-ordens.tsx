@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Flame, LayoutGrid, MapPin } from "lucide-react";
+import { MapaRuas, type PontoMapaRua } from "./mapa-ruas";
 import { PRIORIDADE_OS, SEVERIDADE_OS, TIPO_OS } from "@/lib/dominio";
 import { numero } from "@/lib/utils";
 import { Botao, Etiqueta } from "./ui";
@@ -38,9 +39,10 @@ const COR_SEVERIDADE: Record<string, string> = {
  *   marcadores do que olho humano consegue separar;
  * - **calor**: onde a densidade se concentra, sem precisar contar.
  *
- * O mapa não baixa tiles de rua. A pergunta aqui é proximidade relativa — quem
- * está perto de quê — e ela se responde com uma projeção proporcional. Trocar
- * por um mapa com ruas é substituir só este componente.
+ * "Pontos" usa o mapa com ruas, porque ali a pergunta é "onde é isso" e sem
+ * rua ninguém reconhece o lugar. Agrupado e calor continuam numa projeção
+ * proporcional própria: são leituras de densidade, e sobrepô-las a tiles
+ * esconderia justamente o que elas querem mostrar.
  */
 export function MapaOrdens({
   ordens,
@@ -146,6 +148,23 @@ export function MapaOrdens({
         </span>
       </div>
 
+      {modo === "pontos" ? (
+        <MapaRuas
+          altura={altura}
+          pontos={ordens.map<PontoMapaRua>((o) => ({
+            id: o.id,
+            rotulo: `${o.numero} — ${o.cliente ?? "cliente não informado"}`,
+            detalhe: `${TIPO_OS.rotulo(o.tipo)} · ${SEVERIDADE_OS.rotulo(o.severidade)}${
+              o.bairro ? ` · ${o.bairro}` : ""
+            }`,
+            latitude: o.latitude,
+            longitude: o.longitude,
+            cor: COR_SEVERIDADE[o.severidade] ?? "var(--acento)",
+            destaque: o.emRisco,
+            href: `/os/${o.id}`,
+          }))}
+        />
+      ) : (
       <svg
         viewBox={`0 0 ${projecao.largura} ${projecao.alturaViewbox}`}
         style={{ height: altura }}
@@ -205,30 +224,8 @@ export function MapaOrdens({
             );
           })}
 
-        {modo === "pontos" &&
-          ordens.map((ordem) => {
-            const { x, y } = projecao.ponto(ordem);
-            return (
-              <g
-                key={ordem.id}
-                onClick={() => setSelecionada(ordem)}
-                style={{ cursor: "pointer" }}
-              >
-                {ordem.emRisco && (
-                  <circle cx={x} cy={y} r={13} fill="var(--critico)" opacity={0.2} />
-                )}
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={selecionada?.id === ordem.id ? 11 : 7}
-                  fill={COR_SEVERIDADE[ordem.severidade] ?? "var(--acento)"}
-                  stroke="var(--superficie)"
-                  strokeWidth={2}
-                />
-              </g>
-            );
-          })}
       </svg>
+      )}
 
       {selecionada ? (
         <div className="rounded-lg border border-[var(--borda)] bg-[var(--superficie-2)] p-3">
@@ -276,7 +273,6 @@ export function MapaOrdens({
                   {opcao.rotulo}
                 </span>
               ))}
-              <span className="ml-auto">Clique num ponto para ver a OS.</span>
             </>
           ) : modo === "agrupado" ? (
             <span>
