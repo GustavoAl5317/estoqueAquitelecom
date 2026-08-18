@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Columns3,
   FileBarChart,
+  Hammer,
   History,
   LayoutDashboard,
   Map,
@@ -25,56 +26,68 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Users,
   Warehouse,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Capacidade } from "@/lib/permissoes";
 
-const GRUPOS = [
+type ItemNav = {
+  href: string;
+  rotulo: string;
+  icone: typeof LayoutDashboard;
+  exige: Capacidade;
+  exato?: boolean;
+};
+
+const GRUPOS: { titulo: string; itens: ItemNav[] }[] = [
   {
     titulo: "Operação",
     itens: [
-      { href: "/", rotulo: "Dashboard", icone: LayoutDashboard },
-      { href: "/central", rotulo: "Central de Controle", icone: Radio },
-      { href: "/fila", rotulo: "Fila inteligente", icone: Sparkles },
-      { href: "/alertas", rotulo: "Alertas", icone: AlertTriangle },
-      { href: "/analise", rotulo: "Análise e previsão", icone: BrainCircuit },
+      { href: "/", rotulo: "Dashboard", icone: LayoutDashboard, exige: "estoque.ver" },
+      { href: "/central", rotulo: "Central de Controle", icone: Radio, exige: "operacao.supervisionar" },
+      { href: "/fila", rotulo: "Fila inteligente", icone: Sparkles, exige: "os.gerenciar" },
+      { href: "/alertas", rotulo: "Alertas", icone: AlertTriangle, exige: "estoque.ver" },
+      { href: "/analise", rotulo: "Análise e previsão", icone: BrainCircuit, exige: "estoque.ver" },
     ],
   },
   {
     titulo: "Campo",
     itens: [
-      { href: "/os", rotulo: "Ordens de serviço", icone: ClipboardList, exato: true },
-      { href: "/os/quadro", rotulo: "Quadro operacional", icone: Columns3 },
-      { href: "/roteiro", rotulo: "Roteiro do dia", icone: Route },
-      { href: "/regioes", rotulo: "Regiões e bairros", icone: Map },
+      { href: "/campo", rotulo: "Meu dia", icone: Hammer, exige: "os.executar" },
+      { href: "/os", rotulo: "Ordens de serviço", icone: ClipboardList, exato: true, exige: "os.ver" },
+      { href: "/os/quadro", rotulo: "Quadro operacional", icone: Columns3, exige: "os.ver" },
+      { href: "/roteiro", rotulo: "Roteiro do dia", icone: Route, exige: "os.ver" },
+      { href: "/regioes", rotulo: "Regiões e bairros", icone: Map, exige: "operacao.supervisionar" },
     ],
   },
   {
     titulo: "Estoque",
     itens: [
-      { href: "/materiais", rotulo: "Materiais", icone: Boxes },
-      { href: "/seriais", rotulo: "Equipamentos", icone: ScanLine },
-      { href: "/locais", rotulo: "Locais e detentores", icone: Warehouse },
+      { href: "/materiais", rotulo: "Materiais", icone: Boxes, exige: "estoque.ver" },
+      { href: "/seriais", rotulo: "Equipamentos", icone: ScanLine, exige: "estoque.ver" },
+      { href: "/locais", rotulo: "Locais e detentores", icone: Warehouse, exige: "estoque.ver" },
     ],
   },
   {
     titulo: "Movimentação",
     itens: [
-      { href: "/entradas", rotulo: "Entradas", icone: PackagePlus },
-      { href: "/movimentacoes", rotulo: "Saídas e transferências", icone: ArrowLeftRight },
-      { href: "/ordens", rotulo: "Material por OS", icone: PackageSearch },
-      { href: "/triagem", rotulo: "Logística reversa", icone: Recycle },
-      { href: "/reservas", rotulo: "Reservas", icone: ShieldCheck },
-      { href: "/inventario", rotulo: "Inventário", icone: ClipboardCheck },
+      { href: "/entradas", rotulo: "Entradas", icone: PackagePlus, exige: "estoque.movimentar" },
+      { href: "/movimentacoes", rotulo: "Saídas e transferências", icone: ArrowLeftRight, exige: "estoque.movimentar" },
+      { href: "/ordens", rotulo: "Material por OS", icone: PackageSearch, exige: "estoque.ver" },
+      { href: "/triagem", rotulo: "Logística reversa", icone: Recycle, exige: "estoque.movimentar" },
+      { href: "/reservas", rotulo: "Reservas", icone: ShieldCheck, exige: "estoque.movimentar" },
+      { href: "/inventario", rotulo: "Inventário", icone: ClipboardCheck, exige: "estoque.administrar" },
     ],
   },
   {
     titulo: "Gestão",
     itens: [
-      { href: "/relatorios", rotulo: "Relatórios", icone: FileBarChart },
-      { href: "/auditoria", rotulo: "Auditoria", icone: History },
-      { href: "/configuracoes", rotulo: "Configurações", icone: Settings },
+      { href: "/relatorios", rotulo: "Relatórios", icone: FileBarChart, exige: "estoque.ver" },
+      { href: "/auditoria", rotulo: "Auditoria", icone: History, exige: "sistema.administrar" },
+      { href: "/configuracoes", rotulo: "Configurações", icone: Settings, exige: "sistema.administrar" },
+      { href: "/usuarios", rotulo: "Usuários e acesso", icone: Users, exige: "sistema.administrar" },
     ],
   },
 ];
@@ -89,12 +102,24 @@ function estaAtivo(pathname: string, item: { href: string; exato?: boolean }) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function Itens({ aoNavegar }: { aoNavegar?: () => void }) {
+function Itens({
+  capacidades,
+  aoNavegar,
+}: {
+  capacidades: Capacidade[];
+  aoNavegar?: () => void;
+}) {
   const pathname = usePathname();
+
+  // 3.67 — o menu mostra só o que o perfil alcança; grupo que esvazia some
+  const grupos = GRUPOS.map((grupo) => ({
+    ...grupo,
+    itens: grupo.itens.filter((item) => capacidades.includes(item.exige)),
+  })).filter((grupo) => grupo.itens.length > 0);
 
   return (
     <nav className="space-y-5 px-3 py-4">
-      {GRUPOS.map((grupo) => (
+      {grupos.map((grupo) => (
         <div key={grupo.titulo}>
           <p className="px-2 pb-1.5 text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--texto-3)]">
             {grupo.titulo}
@@ -129,18 +154,18 @@ function Itens({ aoNavegar }: { aoNavegar?: () => void }) {
   );
 }
 
-export function NavegacaoLateral() {
+export function NavegacaoLateral({ capacidades }: { capacidades: Capacidade[] }) {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-[var(--borda)] bg-[var(--superficie)] lg:block">
       <div className="sticky top-0 max-h-screen overflow-y-auto">
         <Marca />
-        <Itens />
+        <Itens capacidades={capacidades} />
       </div>
     </aside>
   );
 }
 
-export function NavegacaoMovel() {
+export function NavegacaoMovel({ capacidades }: { capacidades: Capacidade[] }) {
   const [aberto, setAberto] = useState(false);
 
   return (
@@ -173,7 +198,10 @@ export function NavegacaoMovel() {
                 <X className="size-4" />
               </button>
             </div>
-            <Itens aoNavegar={() => setAberto(false)} />
+            <Itens
+              capacidades={capacidades}
+              aoNavegar={() => setAberto(false)}
+            />
           </div>
         </div>
       )}

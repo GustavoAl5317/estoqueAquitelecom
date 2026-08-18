@@ -9,6 +9,7 @@
 import { prisma } from "../src/lib/prisma";
 import { CATEGORIAS_PADRAO } from "../src/lib/dominio";
 import { slugificar } from "../src/lib/utils";
+import { gerarHash } from "../src/lib/auth";
 import { criarEntrada, receberEntrada } from "../src/lib/servicos/entradas";
 import {
   registrarMovimentacao,
@@ -21,6 +22,9 @@ import { iniciarInventario, registrarContagem } from "../src/lib/servicos/invent
 // --------------------------------------------------------------------------
 // utilidades determinísticas
 // --------------------------------------------------------------------------
+
+/** senha única da base de demonstração — nunca deve chegar a produção */
+const SENHA_DEMONSTRACAO = "estoque2026";
 
 let semente = 20260815;
 function aleatorio() {
@@ -125,14 +129,36 @@ async function main() {
 
   // ------------------------------------------------------------------ usuários
   console.log("Cadastros básicos…");
+  // 3.66 — todo mundo do seed nasce com a mesma senha de demonstração e com a
+  // troca obrigatória ligada. Assim a base fica utilizável para avaliar o
+  // sistema sem que ninguém consiga levar essa senha para produção sem perceber.
+  const senhaDemo = await gerarHash(SENHA_DEMONSTRACAO);
+  const acesso = { senhaHash: senhaDemo, trocarSenha: true };
+
   const admin = await prisma.usuario.create({
-    data: { nome: "Gustavo Alves", email: "admin@operacao.local", papel: "ADMIN" },
+    data: {
+      nome: "Gustavo Alves",
+      email: "admin@operacao.local",
+      papel: "ADMIN",
+      // o administrador do seed entra direto: é ele que vai criar os outros
+      senhaHash: senhaDemo,
+    },
   });
   const supervisor = await prisma.usuario.create({
-    data: { nome: "Marina Duarte", email: "marina@operacao.local", papel: "SUPERVISOR" },
+    data: {
+      nome: "Marina Duarte",
+      email: "marina@operacao.local",
+      papel: "SUPERVISOR",
+      ...acesso,
+    },
   });
   const almoxarife = await prisma.usuario.create({
-    data: { nome: "Renato Lima", email: "renato@operacao.local", papel: "ALMOXARIFE" },
+    data: {
+      nome: "Renato Lima",
+      email: "renato@operacao.local",
+      papel: "ALMOXARIFE",
+      ...acesso,
+    },
   });
 
   // ------------------------------------------------------------------ equipes
@@ -165,6 +191,7 @@ async function main() {
         nome: dados.nome,
         email: `${slugificar(dados.nome)}@operacao.local`,
         papel: "TECNICO",
+        ...acesso,
       },
     });
     const tecnico = await prisma.tecnico.create({
@@ -1252,6 +1279,10 @@ Base populada:
   ${resumo[8]} bairros mapeados
   ${resumo[9]} rastreadores (${resumo[10]} sem classificação)
   ${tecnicos.length} técnicos, ${equipes.length} equipes, ${estoques.length} estoques
+
+Acesso de demonstração:
+  admin@operacao.local  ·  senha ${SENHA_DEMONSTRACAO}
+  Os demais usuários usam a mesma senha e trocam no primeiro acesso.
 `);
 }
 

@@ -32,6 +32,14 @@ model Usuario {
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now())
 
+  /// 3.66 — scrypt, no formato "salt:hash". Nulo enquanto ninguém definiu senha.
+  senhaHash    String?
+  /// obriga a troca no próximo acesso (usuário criado por administrador)
+  trocarSenha  Boolean   @default(false)
+  ultimoAcesso DateTime?
+
+  sessoes Sessao[]
+
   tecnico Tecnico?
 
   estoquesSobResponsabilidade Estoque[]        @relation("EstoqueResponsavel")
@@ -735,6 +743,26 @@ model Veiculo {
   vinculos   VinculoVeiculo[]
 
   @@index([tecnicoAtualId])
+}
+
+/// 3.66 — SESSÃO AUTENTICADA.
+///
+/// O cookie carrega só um token aleatório; tudo o que importa fica aqui. Assim
+/// encerrar a sessão é apagar uma linha — e não depender de o navegador
+/// cooperar.
+model Sessao {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  criadaEm  DateTime @default(now())
+  expiraEm  DateTime
+  ultimoUso DateTime @default(now())
+  agente    String?
+
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId String
+
+  @@index([usuarioId])
+  @@index([expiraEm])
 }
 
 /// 3.1 — O APARELHO DE RASTREAMENTO.

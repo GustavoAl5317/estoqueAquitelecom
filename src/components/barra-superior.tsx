@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Moon, Sun, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ChevronDown, KeyRound, LogOut, Moon, Sun } from "lucide-react";
+import { PAPEL_USUARIO } from "@/lib/dominio";
 import { iniciais } from "@/lib/utils";
-import { trocarUsuario } from "@/app/acoes/sessao";
+import { acaoSair } from "@/app/acoes/conta";
 
 export function SeletorTema() {
   const [escuro, setEscuro] = useState<boolean | null>(null);
@@ -35,43 +36,81 @@ export function SeletorTema() {
 }
 
 /**
- * 1.24 — enquanto o login do Bloco 3 não existe, o responsável pelas operações
- * é escolhido aqui e vai para todos os registros de auditoria.
+ * 3.66 — quem está usando o sistema, e a porta de saída.
+ *
+ * O nome não é decoração: é ele que assina cada movimentação na auditoria.
+ * Deixar visível quem está logado evita a operação inteira ser registrada no
+ * usuário de quem esqueceu a sessão aberta.
  */
-export function SeletorUsuario({
-  usuarios,
-  atualId,
+export function MenuUsuario({
+  usuario,
 }: {
-  usuarios: { id: string; nome: string; papel: string }[];
-  atualId: string;
+  usuario: { nome: string; email: string; papel: string };
 }) {
-  const router = useRouter();
-  const [pendente, iniciar] = useTransition();
-  const atual = usuarios.find((u) => u.id === atualId);
+  const [aberto, setAberto] = useState(false);
 
   return (
-    <label className="flex items-center gap-2" title="Usuário responsável pelas operações">
-      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--acento-suave)] text-[11px] font-semibold text-[var(--acento-texto)]">
-        {atual ? iniciais(atual.nome) : <UserRound className="size-4" />}
-      </span>
-      <select
-        value={atualId}
-        disabled={pendente}
-        className="!w-auto max-w-44 !border-transparent !bg-transparent !py-1 !pl-0 text-sm"
-        onChange={(evento) => {
-          const id = evento.target.value;
-          iniciar(async () => {
-            await trocarUsuario(id);
-            router.refresh();
-          });
-        }}
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        className="flex items-center gap-2 rounded-lg border border-[var(--borda-forte)] py-1 pr-2 pl-1"
+        aria-haspopup="menu"
+        aria-expanded={aberto}
       >
-        {usuarios.map((usuario) => (
-          <option key={usuario.id} value={usuario.id}>
+        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--acento-suave)] text-[11px] font-semibold text-[var(--acento-texto)]">
+          {iniciais(usuario.nome)}
+        </span>
+        <span className="hidden text-left leading-tight sm:block">
+          <span className="block max-w-32 truncate text-xs font-medium">
             {usuario.nome}
-          </option>
-        ))}
-      </select>
-    </label>
+          </span>
+          <span className="block text-[10px] text-[var(--texto-3)]">
+            {PAPEL_USUARIO.rotulo(usuario.papel)}
+          </span>
+        </span>
+        <ChevronDown className="size-3.5 text-[var(--texto-3)]" aria-hidden />
+      </button>
+
+      {aberto && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setAberto(false)}
+            aria-hidden
+          />
+          <div
+            className="absolute right-0 z-50 mt-1 w-56 overflow-hidden rounded-[var(--raio)] border border-[var(--borda)] bg-[var(--superficie)] shadow-[var(--sombra-alta)]"
+            role="menu"
+          >
+            <div className="border-b border-[var(--borda)] px-3 py-2">
+              <p className="truncate text-sm font-medium">{usuario.nome}</p>
+              <p className="truncate text-xs text-[var(--texto-3)]">
+                {usuario.email}
+              </p>
+            </div>
+
+            <Link
+              href="/conta/senha"
+              onClick={() => setAberto(false)}
+              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--superficie-3)]"
+              role="menuitem"
+            >
+              <KeyRound className="size-4" aria-hidden /> Trocar senha
+            </Link>
+
+            <form action={acaoSair}>
+              <button
+                type="submit"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--critico)] hover:bg-[var(--superficie-3)]"
+                role="menuitem"
+              >
+                <LogOut className="size-4" aria-hidden /> Sair
+              </button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

@@ -10,7 +10,35 @@ import {
   moverOrdem,
 } from "@/lib/servicos/ordens";
 import { criarRegiao, salvarBairro } from "@/lib/servicos/regioes";
+import { podeFazer } from "@/lib/permissoes";
+import { prisma } from "@/lib/prisma";
 import type { Resultado } from "./estoque";
+
+/**
+ * 3.67 — o técnico mexe só nas OS dele.
+ *
+ * A permissão `os.executar` deixa mover o cartão pelo fluxo de campo; ela não
+ * deixa mexer no atendimento de outra pessoa. Quem tem `os.gerenciar` (supervisão)
+ * passa direto.
+ */
+async function garantirDominioSobreOrdem(
+  usuario: { id: string; papel: string; tecnicoId: string | null },
+  ordemId: string,
+) {
+  if (podeFazer(usuario.papel, "os.gerenciar")) return;
+
+  const ordem = await prisma.ordemServico.findUnique({
+    where: { id: ordemId },
+    select: { tecnicoId: true, numero: true },
+  });
+  if (!ordem) throw new ErroDeNegocio("Ordem de serviço não encontrada.");
+
+  if (!usuario.tecnicoId || ordem.tecnicoId !== usuario.tecnicoId) {
+    throw new ErroDeNegocio(
+      `A OS ${ordem.numero} está com outro técnico. Fale com a supervisão para assumir.`,
+    );
+  }
+}
 
 /**
  * Server actions dos Blocos 2, 3 e 4.
@@ -55,7 +83,7 @@ const data = (v: FormDataEntryValue | null) => {
 };
 
 /** as telas que mostram OS — revalidadas juntas para não exibir dado velho */
-const TELAS_OS = ["/os", "/os/quadro", "/fila", "/roteiro", "/central", "/ordens"];
+const TELAS_OS = ["/os", "/os/quadro", "/fila", "/roteiro", "/central", "/ordens", "/campo"];
 
 export async function acaoCriarOrdem(
   _estado: Resultado,
@@ -127,6 +155,9 @@ export async function acaoAtribuirOrdem(
   dados: FormData,
 ): Promise<Resultado> {
   const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "os.gerenciar")) {
+    return { erro: "Seu perfil não permite trocar o responsável de uma OS." };
+  }
   const ordemId = String(dados.get("ordemId") ?? "");
   return executar(
     () =>
@@ -142,25 +173,24 @@ export async function acaoAtribuirOrdem(
   );
 }
 
-/** 2.20 — mover o cartão de coluna no quadro. */
+/** 2.20 / 3.63 — mover o cartão de coluna, no quadro ou na tela do técnico. */
 export async function acaoMoverOrdem(
   _estado: Resultado,
   dados: FormData,
 ): Promise<Resultado> {
   const usuario = await usuarioAtual();
   const ordemId = String(dados.get("ordemId") ?? "");
-  return executar(
-    () =>
-      moverOrdem(
-        {
-          ordemId,
-          status: String(dados.get("status") ?? ""),
-          motivo: texto(dados.get("motivo")),
-        },
-        usuario.id,
-      ),
-    [...TELAS_OS, `/os/${ordemId}`],
-  );
+  return executar(async () => {
+    await garantirDominioSobreOrdem(usuario, ordemId);
+    return moverOrdem(
+      {
+        ordemId,
+        status: String(dados.get("status") ?? ""),
+        motivo: texto(dados.get("motivo")),
+      },
+      usuario.id,
+    );
+  }, [...TELAS_OS, `/os/${ordemId}`]);
 }
 
 export async function acaoCriarRegiao(
