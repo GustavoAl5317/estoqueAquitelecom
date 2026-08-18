@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { RELATORIOS, relatorioPorId } from "@/lib/servicos/relatorios";
+import {
+  GRUPOS_DE_RELATORIO,
+  TODOS_RELATORIOS,
+  relatorioPorId,
+} from "@/lib/servicos/relatorios";
 import { numero } from "@/lib/utils";
 import {
   BotaoLink,
@@ -25,7 +29,7 @@ export default async function Relatorios({
 }) {
   const { r, dias } = await searchParams;
 
-  const relatorio = relatorioPorId(r ?? "") ?? RELATORIOS[0];
+  const relatorio = relatorioPorId(r ?? "") ?? TODOS_RELATORIOS[0];
   const periodo = PERIODOS.includes(Number(dias)) ? Number(dias) : 30;
   const { colunas, linhas } = await relatorio.carregar(periodo);
 
@@ -41,22 +45,29 @@ export default async function Relatorios({
       <div className="grid gap-4 lg:grid-cols-4">
         <nav className="lg:col-span-1">
           <Cartao titulo="Relatórios" semPadding>
-            <ul className="py-1">
-              {RELATORIOS.map((item) => (
-                <li key={item.id}>
-                  <Link
-                    href={`/relatorios?r=${item.id}&dias=${periodo}`}
-                    className={`block px-4 py-2 text-sm transition-colors ${
-                      item.id === relatorio.id
-                        ? "bg-[var(--acento-suave)] font-medium text-[var(--acento-texto)]"
-                        : "text-[var(--texto-2)] hover:bg-[var(--superficie-2)]"
-                    }`}
-                  >
-                    {item.nome}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {GRUPOS_DE_RELATORIO.map((grupo) => (
+              <div key={grupo.titulo}>
+                <p className="border-b border-[var(--borda)] bg-[var(--superficie-2)] px-4 py-1.5 text-[10px] font-semibold tracking-wide uppercase text-[var(--texto-3)]">
+                  {grupo.titulo}
+                </p>
+                <ul className="py-1">
+                  {grupo.relatorios.map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        href={`/relatorios?r=${item.id}&dias=${periodo}`}
+                        className={`block px-4 py-2 text-sm transition-colors ${
+                          item.id === relatorio.id
+                            ? "bg-[var(--acento-suave)] font-medium text-[var(--acento-texto)]"
+                            : "text-[var(--texto-2)] hover:bg-[var(--superficie-2)]"
+                        }`}
+                      >
+                        {item.nome}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </Cartao>
         </nav>
 

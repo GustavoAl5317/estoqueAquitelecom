@@ -3,6 +3,7 @@ import {
   SEVERIDADE_OS,
   STATUS_OS,
   STATUS_OS_ABERTOS,
+  SUBTIPOS_POR_TIPO,
   TIPO_OS,
 } from "@/lib/dominio";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +40,48 @@ type Regra = {
   gatilhos: string[];
 };
 
+/** palavras que só ligam a frase e nunca identificam um domínio sozinhas */
+const LIGACOES = new Set([
+  "em",
+  "de",
+  "da",
+  "do",
+  "sem",
+  "com",
+  "por",
+  "para",
+  "nao",
+  "ate",
+  "sob",
+  "mudanca",
+]);
+
+/**
+ * Ninguém escreve no singular: pergunta-se por "instalações" e "críticas".
+ * Gerar as variantes aqui evita ter de listá-las uma a uma em cada domínio.
+ */
+function comPlural(termo: string) {
+  const limpo = normalizar(termo);
+  if (!limpo) return [];
+  const formas = new Set([limpo]);
+
+  if (limpo.endsWith("ao")) formas.add(`${limpo.slice(0, -2)}oes`); // instalação → instalações
+  else if (limpo.endsWith("r") || limpo.endsWith("z")) formas.add(`${limpo}es`);
+  else if (limpo.endsWith("l")) formas.add(`${limpo.slice(0, -1)}is`);
+  else if (!limpo.endsWith("s")) formas.add(`${limpo}s`);
+
+  // O rótulo composto também vale pelo substantivo principal — mas só quando
+  // ele é uma palavra de conteúdo. Sem esta guarda, "Em deslocamento" passaria
+  // a casar com o "em" de "atrasadas em Messejana".
+  const palavras = limpo.split(" ");
+  const primeira = palavras[0];
+  if (palavras.length > 1 && primeira.length > 3 && !LIGACOES.has(primeira)) {
+    formas.add(primeira);
+  }
+
+  return [...formas];
+}
+
 function regrasDeDominio(): Regra[] {
   const regras: Regra[] = [];
 
@@ -47,8 +90,27 @@ function regrasDeDominio(): Regra[] {
       campo: "tipo",
       rotulo: "Tipo",
       valor: opcao.valor,
-      gatilhos: [normalizar(opcao.rotulo)],
+      gatilhos: comPlural(opcao.rotulo),
     });
+  }
+
+  // 2.6 — o subtipo é o que a pessoa realmente diz: "sem conexão", "atenuação"
+  for (const [tipo, subtipos] of Object.entries(SUBTIPOS_POR_TIPO)) {
+    for (const subtipo of subtipos) {
+      regras.push({
+        campo: "subtipo",
+        rotulo: "Subtipo",
+        valor: subtipo,
+        gatilhos: comPlural(subtipo),
+      });
+      // quem pede "sem conexão" quer reparo, mesmo sem dizer a palavra
+      regras.push({
+        campo: "tipo",
+        rotulo: "Tipo",
+        valor: tipo,
+        gatilhos: comPlural(subtipo),
+      });
+    }
   }
 
   for (const opcao of STATUS_OS.opcoes) {
@@ -56,7 +118,7 @@ function regrasDeDominio(): Regra[] {
       campo: "status",
       rotulo: "Situação",
       valor: opcao.valor,
-      gatilhos: [normalizar(opcao.rotulo)],
+      gatilhos: comPlural(opcao.rotulo),
     });
   }
 
@@ -74,7 +136,7 @@ function regrasDeDominio(): Regra[] {
       campo: "severidade",
       rotulo: "Severidade",
       valor: opcao.valor,
-      gatilhos: [normalizar(opcao.rotulo)],
+      gatilhos: comPlural(opcao.rotulo),
     });
   }
 
@@ -148,12 +210,18 @@ export async function interpretar(pergunta: string): Promise<Interpretacao> {
 
   const entendido: { campo: string; valor: string; rotulo: string }[] = [];
 
-  const consumir = (regra: Regra) => {
+  /**
+   * `manterTexto` existe para o subtipo: "sem conexão" precisa preencher o
+   * subtipo **e** o tipo. Se a primeira regra consumisse o trecho, a segunda
+   * não teria o que casar.
+   */
+  const consumir = (regra: Regra, manterTexto = false) => {
     for (const gatilho of regra.gatilhos) {
       if (!gatilho) continue;
       const alvo = ` ${gatilho} `;
       if (restante.includes(alvo)) {
-        restante = restante.replace(alvo, " ");
+        if (!manterTexto) restante = restante.replace(alvo, " ");
+        if (entendido.some((e) => e.campo === regra.campo)) return true;
         entendido.push({
           campo: regra.campo,
           valor: regra.valor,
@@ -172,7 +240,15 @@ export async function interpretar(pergunta: string): Promise<Interpretacao> {
   const dominio = regrasDeDominio().sort(
     (a, b) => (b.gatilhos[0]?.length ?? 0) - (a.gatilhos[0]?.length ?? 0),
   );
-  for (const regra of dominio) consumir(regra);
+  // Subtipo primeiro, sem consumir o texto, para que a regra de tipo derivada
+  // dele ainda o encontre — "sem conexão" preenche os dois. Depois o restante,
+  // já sem os subtipos, que foram resolvidos.
+  for (const regra of dominio.filter((r) => r.campo === "subtipo")) {
+    consumir(regra, true);
+  }
+  for (const regra of dominio.filter((r) => r.campo !== "subtipo")) {
+    consumir(regra);
+  }
 
   const [bairros, tecnicos] = await Promise.all([
     prisma.bairro.findMany({ select: { id: true, nome: true } }),
@@ -269,6 +345,7 @@ function rotularValor(campo: string, valor: string) {
       ? "em aberto"
       : STATUS_OS.rotulo(valor);
   }
+  if (campo === "subtipo") return valor;
   if (campo === "prioridade") return PRIORIDADE_OS.rotulo(valor);
   if (campo === "severidade") return SEVERIDADE_OS.rotulo(valor);
   if (campo === "risco") return "em risco ou estourado";

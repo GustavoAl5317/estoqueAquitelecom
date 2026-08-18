@@ -7,7 +7,7 @@
  * retrodatados para montar o histórico.
  */
 import { prisma } from "../src/lib/prisma";
-import { CATEGORIAS_PADRAO } from "../src/lib/dominio";
+import { CATEGORIAS_PADRAO, SUBTIPOS_POR_TIPO } from "../src/lib/dominio";
 import { slugificar } from "../src/lib/utils";
 import { gerarHash } from "../src/lib/auth";
 import { criarEntrada, receberEntrada } from "../src/lib/servicos/entradas";
@@ -103,6 +103,9 @@ async function limpar() {
     prisma.unidadeSerial,
     prisma.saldo,
     prisma.auditoria,
+    prisma.eventoOS,
+    prisma.visaoSalva,
+    prisma.sessao,
     prisma.materialPrevistoOS,
     prisma.ordemServico,
     prisma.localizacaoTecnico,
@@ -1120,6 +1123,7 @@ async function main() {
       data: {
         numero: proximoNumeroOS(),
         tipo: modelo.tipo,
+        subtipo: escolher(SUBTIPOS_POR_TIPO[modelo.tipo] ?? ["—"]),
         titulo: modelo.titulo,
         cliente: nomeCliente(),
         contrato: String(inteiro(1000, 9999)),
@@ -1233,6 +1237,137 @@ async function main() {
     }
   }
 
+  // --- 2.25 reincidência ---------------------------------------------------
+  //
+  // Um cliente que volta pela quarta vez é o caso que a tela precisa mostrar.
+  // Sem forçar aqui, os nomes aleatórios nunca repetem e a funcionalidade fica
+  // invisível na demonstração.
+  const reincidentes = [
+    { cliente: "Antônio Ribeiro", contrato: "4821", vezes: 4 },
+    { cliente: "Fernanda Nogueira", contrato: "5107", vezes: 3 },
+  ];
+
+  for (const caso of reincidentes) {
+    const bairro = escolher(bairros);
+    for (let i = 0; i < caso.vezes; i++) {
+      const modelo = TIPOS_OS[1]; // reparo — o tipo que de fato reincide
+      const abertaEm = diasAtras(inteiro(1, 28), inteiro(8, 18));
+      const ultima = i === caso.vezes - 1;
+
+      await prisma.ordemServico.create({
+        data: {
+          numero: proximoNumeroOS(),
+          tipo: modelo.tipo,
+          subtipo: escolher(["Sem conexão", "Quedas", "Lentidão"]),
+          titulo: modelo.titulo,
+          cliente: caso.cliente,
+          contrato: caso.contrato,
+          endereco: `${escolher(RUAS)}, ${inteiro(10, 900)}`,
+          bairroId: bairro.id,
+          bairroNome: bairro.nome,
+          cidade: "Fortaleza",
+          ...pertoDe(bairro),
+          prioridade: ultima ? "P2" : "P3",
+          severidade: "ALTA",
+          sla: modelo.sla,
+          prazo: new Date(abertaEm.getTime() + modelo.sla * 60_000),
+          abertaEm,
+          concluidaEm: ultima
+            ? null
+            : new Date(abertaEm.getTime() + inteiro(60, 300) * 60_000),
+          status: ultima ? "ABERTA" : "CONCLUIDA",
+          origem: "SGP",
+          tecnicoId: ultima ? null : escolher(tecnicos).tecnico.id,
+        },
+      });
+    }
+  }
+
+  // --- 2.27 possível incidente ---------------------------------------------
+  //
+  // Sete OS do mesmo tipo, num raio de poucas centenas de metros, abertas em
+  // menos de uma hora: o padrão de um cabo rompido. É o caso que a detecção
+  // existe para pegar.
+  const foco = bairros[0];
+  const centroIncidente = {
+    latitude: foco.lat + 0.004,
+    longitude: foco.lng - 0.003,
+  };
+
+  for (let i = 0; i < 7; i++) {
+    const abertaEm = new Date(Date.now() - (50 - i * 7) * 60_000);
+    await prisma.ordemServico.create({
+      data: {
+        numero: proximoNumeroOS(),
+        tipo: "REPARO",
+        subtipo: "Sem conexão",
+        titulo: "Sem conexão",
+        cliente: nomeCliente(),
+        contrato: String(inteiro(1000, 9999)),
+        endereco: `${escolher(RUAS)}, ${inteiro(10, 400)}`,
+        bairroId: foco.id,
+        bairroNome: foco.nome,
+        cidade: "Fortaleza",
+        latitude: centroIncidente.latitude + (aleatorio() - 0.5) * 0.008,
+        longitude: centroIncidente.longitude + (aleatorio() - 0.5) * 0.008,
+        prioridade: "P2",
+        severidade: "ALTA",
+        sla: 240,
+        prazo: new Date(abertaEm.getTime() + 240 * 60_000),
+        abertaEm,
+        status: "ABERTA",
+        origem: "SGP",
+      },
+    });
+  }
+
+  // --- 2.33 timeline das concluídas ----------------------------------------
+  //
+  // Sem eventos não há como medir tempo por etapa (2.41). Reconstrói-se a
+  // trilha das OS concluídas para que a média tenha de onde sair.
+  for (const ordem of ordensConcluidas) {
+    if (!ordem.concluidaEm) continue;
+    const duracao = ordem.concluidaEm.getTime() - ordem.abertaEm.getTime();
+
+    const marcos = [
+      { tipo: "RECEBIDA", status: "ABERTA", fracao: 0, texto: "OS recebida do SGP." },
+      { tipo: "ATRIBUIDA", status: "ATRIBUIDA", fracao: 0.15, texto: "Responsável definido." },
+      { tipo: "STATUS", status: "EM_DESLOCAMENTO", fracao: 0.35, texto: "Técnico em deslocamento." },
+      { tipo: "STATUS", status: "EM_ATENDIMENTO", fracao: 0.5, texto: "Atendimento iniciado." },
+      { tipo: "STATUS", status: "CONCLUIDA", fracao: 1, texto: "Atendimento concluído." },
+    ];
+
+    for (const marco of marcos) {
+      await prisma.eventoOS.create({
+        data: {
+          ordemServicoId: ordem.id,
+          tipo: marco.tipo,
+          status: marco.status,
+          descricao: marco.texto,
+          usuarioId: supervisor.id,
+          ocorreuEm: new Date(ordem.abertaEm.getTime() + duracao * marco.fracao),
+        },
+      });
+    }
+  }
+
+  // --- 2.19 visões salvas de exemplo ---------------------------------------
+  for (const visao of [
+    { nome: "Críticas sem técnico", filtros: "prioridade=P1&semResponsavel=1" },
+    { nome: "Prazo estourado", filtros: "risco=1" },
+    { nome: "Instalações da semana", filtros: "tipo=INSTALACAO&periodo=7" },
+  ]) {
+    await prisma.visaoSalva.create({
+      data: {
+        nome: visao.nome,
+        tela: "/os",
+        filtros: visao.filtros,
+        compartilhada: true,
+        criadaPorId: supervisor.id,
+      },
+    });
+  }
+
   // 3.11 — o status do técnico precisa refletir a OS em que ele está
   for (const tec of tecnicos) {
     const emCampo = await prisma.ordemServico.findFirst({
@@ -1265,6 +1400,7 @@ async function main() {
     prisma.bairro.count(),
     prisma.rastreador.count(),
     prisma.rastreador.count({ where: { tipo: "NAO_CLASSIFICADO" } }),
+    prisma.eventoOS.count(),
   ]);
 
   console.log(`
@@ -1278,6 +1414,7 @@ Base populada:
   ${resumo[6]} ordens de serviço (${resumo[7]} em aberto)
   ${resumo[8]} bairros mapeados
   ${resumo[9]} rastreadores (${resumo[10]} sem classificação)
+  ${resumo[11]} eventos na timeline das OS
   ${tecnicos.length} técnicos, ${equipes.length} equipes, ${estoques.length} estoques
 
 Acesso de demonstração:

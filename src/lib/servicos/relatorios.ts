@@ -3,12 +3,26 @@ import {
   ESTADO_FISICO,
   MOVIMENTOS_DE_CONSUMO,
   NIVEL_ESTOQUE,
+  SEVERIDADE_OS,
+  SITUACAO_SLA,
+  STATUS_OS,
+  STATUS_OS_ABERTOS,
   STATUS_SERIAL,
   TIPO_ENTRADA,
   TIPO_MOVIMENTACAO,
+  TIPO_OS,
 } from "@/lib/dominio";
 import { dataHora, diasAtras, numero } from "@/lib/utils";
 import { consumoPorDetentor, saldosConsolidados } from "./consultas";
+import {
+  listarOrdens,
+  listarOrdensComMaterial,
+  prazoLegivel,
+  situacaoSla,
+} from "./ordens";
+import { minutosLegiveis, temposDaOrdem, temposMedios } from "./eventos";
+import { possiveisIncidentes, reincidencias } from "./incidentes";
+import { deslocamentoDoTecnico } from "./localizacao";
 
 /**
  * 1.30 — RELATÓRIOS.
@@ -596,9 +610,546 @@ export const RELATORIOS: Relatorio[] = [
   },
 ];
 
+
+// ---------------------------------------------------------------------------
+// 2.49 / 3.68 — RELATÓRIOS DE ORDEM DE SERVIÇO E DESLOCAMENTO
+//
+// Mesmo contrato dos relatórios de estoque: cabeçalho + linhas, renderizados em
+// tela e exportados em CSV pelo mesmo código.
+// ---------------------------------------------------------------------------
+
+const RELATORIOS_OS: Relatorio[] = [
+  {
+    id: "os-abertas",
+    nome: "Ordens em aberto",
+    descricao:
+      "Tudo que ainda consome capacidade da operação, com prazo e responsável.",
+    async carregar() {
+      const ordens = await listarOrdens({ status: STATUS_OS_ABERTOS, limite: 500 });
+      return {
+        colunas: [
+          "OS",
+          "Cliente",
+          "Tipo",
+          "Subtipo",
+          "Prioridade",
+          "Severidade",
+          "Situação",
+          "Bairro",
+          "Responsável",
+          "Aberta em",
+          "Prazo",
+          "Situação do prazo",
+        ],
+        linhas: ordens.map((o) => [
+          o.numero,
+          texto(o.cliente),
+          TIPO_OS.rotulo(o.tipo),
+          texto(o.subtipo),
+          o.prioridade,
+          SEVERIDADE_OS.rotulo(o.severidade),
+          STATUS_OS.rotulo(o.status),
+          texto(o.bairro?.nome ?? o.bairroNome),
+          texto(o.tecnico?.nome),
+          dataHora(o.abertaEm),
+          o.prazo ? dataHora(o.prazo) : "",
+          SITUACAO_SLA.rotulo(o.situacao),
+        ]),
+      };
+    },
+  },
+
+  {
+    id: "os-concluidas",
+    nome: "Ordens concluídas",
+    descricao: "Atendimentos encerrados no período, com tempo total e SLA.",
+    periodo: true,
+    async carregar(dias) {
+      const ordens = await prisma.ordemServico.findMany({
+        where: { concluidaEm: { gte: diasAtras(dias) } },
+        include: {
+          tecnico: { select: { nome: true } },
+          equipe: { select: { nome: true } },
+          eventos: {
+            select: { tipo: true, status: true, ocorreuEm: true },
+            orderBy: { ocorreuEm: "asc" },
+          },
+        },
+        orderBy: { concluidaEm: "desc" },
+      });
+
+      return {
+        colunas: [
+          "OS",
+          "Cliente",
+          "Tipo",
+          "Bairro",
+          "Responsável",
+          "Equipe",
+          "Aberta em",
+          "Concluída em",
+          "Até atribuição",
+          "Deslocamento",
+          "Atendimento",
+          "Total",
+          "SLA",
+        ],
+        linhas: ordens.map((o) => {
+          const tempos = temposDaOrdem(o, o.eventos);
+          return [
+            o.numero,
+            texto(o.cliente),
+            TIPO_OS.rotulo(o.tipo),
+            texto(o.bairroNome),
+            texto(o.tecnico?.nome),
+            texto(o.equipe?.nome),
+            dataHora(o.abertaEm),
+            o.concluidaEm ? dataHora(o.concluidaEm) : "",
+            minutosLegiveis(tempos.ateAtribuicao),
+            minutosLegiveis(tempos.emDeslocamento),
+            minutosLegiveis(tempos.emAtendimento),
+            minutosLegiveis(tempos.total),
+            SITUACAO_SLA.rotulo(situacaoSla(o).situacao),
+          ];
+        }),
+      };
+    },
+  },
+
+  {
+    id: "os-atrasadas",
+    nome: "Ordens atrasadas",
+    descricao: "Abertas com o prazo já vencido — o que precisa de explicação.",
+    async carregar() {
+      const ordens = await listarOrdens({
+        status: STATUS_OS_ABERTOS,
+        somenteRisco: true,
+        limite: 500,
+      });
+      const atrasadas = ordens.filter((o) => o.situacao === "ESTOURADO");
+
+      return {
+        colunas: [
+          "OS",
+          "Cliente",
+          "Tipo",
+          "Bairro",
+          "Responsável",
+          "Prazo",
+          "Atraso",
+          "Aberta há",
+        ],
+        linhas: atrasadas.map((o) => [
+          o.numero,
+          texto(o.cliente),
+          TIPO_OS.rotulo(o.tipo),
+          texto(o.bairro?.nome ?? o.bairroNome),
+          texto(o.tecnico?.nome ?? "sem responsável"),
+          o.prazo ? dataHora(o.prazo) : "",
+          prazoLegivel(o.minutosRestantes),
+          minutosLegiveis(
+            Math.round((Date.now() - o.abertaEm.getTime()) / 60_000),
+          ),
+        ]),
+      };
+    },
+  },
+
+  {
+    id: "os-por-tecnico",
+    nome: "Ordens por técnico",
+    descricao: "Carga atual e produção no período, por profissional.",
+    periodo: true,
+    async carregar(dias) {
+      const desde = diasAtras(dias);
+      const tecnicos = await prisma.tecnico.findMany({
+        where: { ativo: true },
+        include: {
+          equipe: { select: { nome: true } },
+          ordens: {
+            where: { OR: [{ abertaEm: { gte: desde } }, { status: { in: STATUS_OS_ABERTOS } }] },
+            select: {
+              status: true,
+              prioridade: true,
+              prazo: true,
+              concluidaEm: true,
+              abertaEm: true,
+            },
+          },
+        },
+        orderBy: { nome: "asc" },
+      });
+
+      return {
+        colunas: [
+          "Técnico",
+          "Matrícula",
+          "Equipe",
+          "Situação",
+          "Em aberto",
+          "Emergenciais",
+          "Em risco",
+          "Concluídas no período",
+          "SLA cumprido",
+        ],
+        linhas: tecnicos.map((t) => {
+          const abertas = t.ordens.filter((o) => STATUS_OS_ABERTOS.includes(o.status));
+          const concluidas = t.ordens.filter(
+            (o) => o.status === "CONCLUIDA" && o.concluidaEm && o.concluidaEm >= desde,
+          );
+          const comPrazo = concluidas.filter((o) => o.prazo);
+          const noPrazo = comPrazo.filter(
+            (o) => situacaoSla(o).situacao === "CONCLUIDA_NO_PRAZO",
+          );
+
+          return [
+            t.nome,
+            t.matricula,
+            texto(t.equipe?.nome),
+            t.status.replaceAll("_", " ").toLowerCase(),
+            String(abertas.length),
+            String(abertas.filter((o) => o.prioridade === "P1").length),
+            String(
+              abertas.filter((o) => {
+                const s = situacaoSla(o).situacao;
+                return s === "ESTOURADO" || s === "ATENCAO";
+              }).length,
+            ),
+            String(concluidas.length),
+            comPrazo.length
+              ? `${Math.round((noPrazo.length / comPrazo.length) * 100)}%`
+              : "",
+          ];
+        }),
+      };
+    },
+  },
+
+  {
+    id: "os-por-bairro",
+    nome: "Ordens por bairro",
+    descricao: "Distribuição territorial da demanda e cobertura de responsável.",
+    periodo: true,
+    async carregar(dias) {
+      const desde = diasAtras(dias);
+      const bairros = await prisma.bairro.findMany({
+        include: {
+          regiao: { select: { nome: true } },
+          responsavelPrincipal: { select: { nome: true } },
+          responsavelSecundario: { select: { nome: true } },
+          ordens: {
+            where: { abertaEm: { gte: desde } },
+            select: {
+              status: true,
+              tipo: true,
+              prazo: true,
+              concluidaEm: true,
+              abertaEm: true,
+            },
+          },
+        },
+        orderBy: { nome: "asc" },
+      });
+
+      return {
+        colunas: [
+          "Bairro",
+          "Cidade",
+          "Região",
+          "Responsável",
+          "Reserva",
+          "OS no período",
+          "Em aberto",
+          "Tipo predominante",
+          "Concluídas",
+        ],
+        linhas: bairros.map((b) => {
+          const tipos = new Map<string, number>();
+          for (const ordem of b.ordens) {
+            tipos.set(ordem.tipo, (tipos.get(ordem.tipo) ?? 0) + 1);
+          }
+          const predominante = [...tipos.entries()].sort((a, c) => c[1] - a[1])[0];
+
+          return [
+            b.nome,
+            b.cidade,
+            texto(b.regiao?.nome),
+            texto(b.responsavelPrincipal?.nome ?? "não definido"),
+            texto(b.responsavelSecundario?.nome),
+            String(b.ordens.length),
+            String(b.ordens.filter((o) => STATUS_OS_ABERTOS.includes(o.status)).length),
+            predominante ? TIPO_OS.rotulo(predominante[0]) : "",
+            String(b.ordens.filter((o) => o.status === "CONCLUIDA").length),
+          ];
+        }),
+      };
+    },
+  },
+
+  {
+    id: "os-tempo-medio",
+    nome: "Tempo médio por etapa",
+    descricao:
+      "Quanto leva atribuir, deslocar e atender — por tipo de ordem (2.41).",
+    periodo: true,
+    async carregar(dias) {
+      const medias = await temposMedios(dias);
+      return {
+        colunas: [
+          "Tipo",
+          "Concluídas",
+          "Até atribuição",
+          "Deslocamento",
+          "Atendimento",
+          "Total",
+        ],
+        linhas: [
+          [
+            "TODOS OS TIPOS",
+            String(medias.concluidas),
+            minutosLegiveis(medias.ateAtribuicao),
+            minutosLegiveis(medias.emDeslocamento),
+            minutosLegiveis(medias.emAtendimento),
+            minutosLegiveis(medias.total),
+          ],
+          ...medias.porTipo.map((linha) => [
+            TIPO_OS.rotulo(linha.tipo),
+            String(linha.quantidade),
+            minutosLegiveis(linha.ateAtribuicao),
+            minutosLegiveis(linha.emDeslocamento),
+            minutosLegiveis(linha.emAtendimento),
+            minutosLegiveis(linha.total),
+          ]),
+        ],
+      };
+    },
+  },
+
+  {
+    id: "os-reincidencia",
+    nome: "Clientes reincidentes",
+    descricao:
+      "Quem voltou a abrir chamado — sinal de problema que não foi resolvido (2.25).",
+    periodo: true,
+    async carregar(dias) {
+      const lista = await reincidencias(dias, 2);
+      return {
+        colunas: [
+          "Cliente",
+          "Contrato",
+          "OS no período",
+          "Ainda abertas",
+          "Tipos",
+          "Última abertura",
+        ],
+        linhas: lista.map((r) => [
+          r.cliente,
+          texto(r.contrato),
+          String(r.ordens),
+          String(r.abertas),
+          r.tipos
+            .map((t) => `${TIPO_OS.rotulo(t.tipo)} (${t.quantidade})`)
+            .join(", "),
+          dataHora(r.ultimaEm),
+        ]),
+      };
+    },
+  },
+
+  {
+    id: "os-sla",
+    nome: "Aderência ao SLA",
+    descricao: "Cumprimento de prazo por tipo de ordem no período.",
+    periodo: true,
+    async carregar(dias) {
+      const ordens = await prisma.ordemServico.findMany({
+        where: { concluidaEm: { gte: diasAtras(dias) }, prazo: { not: null } },
+        select: {
+          tipo: true,
+          prazo: true,
+          concluidaEm: true,
+          status: true,
+          abertaEm: true,
+        },
+      });
+
+      const porTipo = new Map<string, { total: number; noPrazo: number }>();
+      for (const ordem of ordens) {
+        const atual = porTipo.get(ordem.tipo) ?? { total: 0, noPrazo: 0 };
+        atual.total += 1;
+        if (situacaoSla(ordem).situacao === "CONCLUIDA_NO_PRAZO") atual.noPrazo += 1;
+        porTipo.set(ordem.tipo, atual);
+      }
+
+      const total = ordens.length;
+      const noPrazo = [...porTipo.values()].reduce((s, v) => s + v.noPrazo, 0);
+
+      return {
+        colunas: ["Tipo", "Concluídas com prazo", "No prazo", "Violadas", "Aderência"],
+        linhas: [
+          [
+            "TODOS OS TIPOS",
+            String(total),
+            String(noPrazo),
+            String(total - noPrazo),
+            total ? `${Math.round((noPrazo / total) * 100)}%` : "",
+          ],
+          ...[...porTipo.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([tipo, v]) => [
+              TIPO_OS.rotulo(tipo),
+              String(v.total),
+              String(v.noPrazo),
+              String(v.total - v.noPrazo),
+              `${Math.round((v.noPrazo / v.total) * 100)}%`,
+            ]),
+        ],
+      };
+    },
+  },
+
+  {
+    id: "os-material",
+    nome: "Material aplicado por OS",
+    descricao: "O que cada atendimento consumiu e quanto custou.",
+    periodo: true,
+    async carregar(dias) {
+      const ordens = await listarOrdensComMaterial(500);
+      const desde = diasAtras(dias);
+      const noPeriodo = ordens.filter((o) => o.abertaEm >= desde);
+
+      return {
+        colunas: [
+          "OS",
+          "Cliente",
+          "Técnico",
+          "Situação",
+          "Movimentações",
+          "Itens",
+          "Custo",
+          "Materiais",
+          "Aberta em",
+        ],
+        linhas: noPeriodo.map((o) => [
+          o.numero,
+          texto(o.cliente),
+          texto(o.tecnico),
+          STATUS_OS.rotulo(o.status),
+          String(o.movimentacoes),
+          numero(o.totalItens, 2),
+          numero(o.valor, 2),
+          o.resumo,
+          dataHora(o.abertaEm),
+        ]),
+      };
+    },
+  },
+
+  {
+    id: "deslocamento-tecnico",
+    nome: "Deslocamento por técnico",
+    descricao:
+      "Distância percorrida e tempo em movimento, a partir das posições registradas (3.68).",
+    periodo: true,
+    async carregar(dias) {
+      const desde = diasAtras(dias);
+      const tecnicos = await prisma.tecnico.findMany({
+        where: { ativo: true },
+        include: { equipe: { select: { nome: true } } },
+        orderBy: { nome: "asc" },
+      });
+
+      const linhas: string[][] = [];
+      for (const tecnico of tecnicos) {
+        const d = await deslocamentoDoTecnico(tecnico.id, desde);
+        const concluidas = await prisma.ordemServico.count({
+          where: {
+            tecnicoId: tecnico.id,
+            status: "CONCLUIDA",
+            concluidaEm: { gte: desde },
+          },
+        });
+
+        linhas.push([
+          tecnico.nome,
+          texto(tecnico.equipe?.nome),
+          String(d.leituras),
+          numero(d.km, 1),
+          minutosLegiveis(d.minutosEmMovimento),
+          String(concluidas),
+          concluidas ? numero(d.km / concluidas, 1) : "",
+          d.primeira ? dataHora(d.primeira) : "",
+          d.ultima ? dataHora(d.ultima) : "",
+        ]);
+      }
+
+      return {
+        colunas: [
+          "Técnico",
+          "Equipe",
+          "Leituras de posição",
+          "Distância (km)",
+          "Tempo em movimento",
+          "OS concluídas",
+          "km por OS",
+          "Primeira leitura",
+          "Última leitura",
+        ],
+        linhas,
+      };
+    },
+  },
+
+  {
+    id: "os-incidentes",
+    nome: "Possíveis incidentes",
+    descricao:
+      "Agrupamentos de OS próximas do mesmo tipo — hipótese, não conclusão (2.27).",
+    async carregar() {
+      const incidentes = await possiveisIncidentes();
+      return {
+        colunas: [
+          "Tipo",
+          "Bairro",
+          "OS agrupadas",
+          "Raio (km)",
+          "Janela",
+          "Confiança",
+          "Primeira",
+          "Última",
+          "Números",
+        ],
+        linhas: incidentes.map((i) => [
+          TIPO_OS.rotulo(i.tipo),
+          texto(i.bairro),
+          String(i.ordens.length),
+          numero(i.raioKm, 2),
+          minutosLegiveis(i.minutosDeJanela),
+          i.confianca === "ALTA" ? "alta" : "média",
+          dataHora(i.primeira),
+          dataHora(i.ultima),
+          i.ordens.map((o) => o.numero).join(", "),
+        ]),
+      };
+    },
+  },
+];
+
+/**
+ * Estoque primeiro, operação depois — é a ordem em que a tela agrupa, e a
+ * ordem em que a empresa cresceu usando o sistema.
+ */
+export const TODOS_RELATORIOS: Relatorio[] = [...RELATORIOS, ...RELATORIOS_OS];
+
 export function relatorioPorId(id: string) {
-  return RELATORIOS.find((r) => r.id === id);
+  return TODOS_RELATORIOS.find((r) => r.id === id);
 }
+
+/** os grupos, para a tela separar as duas famílias */
+export const GRUPOS_DE_RELATORIO = [
+  { titulo: "Estoque", relatorios: RELATORIOS },
+  { titulo: "Ordens de serviço e campo", relatorios: RELATORIOS_OS },
+];
 
 /** CSV com separador ponto e vírgula e BOM, para abrir direto no Excel pt-BR. */
 export function montarCsv(colunas: string[], linhas: string[][]) {

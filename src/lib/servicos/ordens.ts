@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { auditar, ErroDeNegocio, type Tx } from "./nucleo";
+import { registrarEvento } from "./eventos";
 import {
   COLUNAS_QUADRO,
   STATUS_OS,
@@ -378,6 +379,16 @@ export async function criarOrdem(dados: DadosOrdem, usuarioId: string) {
     depois: { numero, tipo: dados.tipo, cliente: dados.cliente ?? null },
   });
 
+  // 2.33 — a timeline começa no nascimento da OS, não na primeira mudança
+  await registrarEvento({
+    ordemServicoId: ordem.id,
+    tipo: "RECEBIDA",
+    descricao: `OS registrada na Central como ${TIPO_OS.rotulo(dados.tipo).toLowerCase()}.`,
+    status: ordem.status,
+    usuarioId,
+    ocorreuEm: ordem.abertaEm,
+  });
+
   return ordem;
 }
 
@@ -483,6 +494,16 @@ export async function atribuirOrdem(
     depois: { tecnico: tecnico?.nome ?? null, status: atualizada.status },
   });
 
+  await registrarEvento({
+    ordemServicoId: ordem.id,
+    tipo: "ATRIBUIDA",
+    descricao: tecnico
+      ? `Atribuída a ${tecnico.nome}.`
+      : "Responsável removido — voltou para a fila.",
+    status: atualizada.status,
+    usuarioId,
+  });
+
   return atualizada;
 }
 
@@ -552,6 +573,16 @@ export async function moverOrdem(
     usuarioId,
     antes: { status: ordem.status },
     depois: { status: dados.status },
+  });
+
+  await registrarEvento({
+    ordemServicoId: ordem.id,
+    tipo: "STATUS",
+    descricao: `${STATUS_OS.rotulo(ordem.status)} → ${STATUS_OS.rotulo(dados.status)}${
+      dados.motivo ? `. ${dados.motivo}` : ""
+    }`,
+    status: dados.status,
+    usuarioId,
   });
 
   return atualizada;
