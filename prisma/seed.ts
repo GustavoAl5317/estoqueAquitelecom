@@ -84,44 +84,59 @@ function mac(i: number) {
  * Tecnico e UnidadeSerial ao mesmo tempo.
  */
 async function limpar() {
-  const tabelas = [
-    prisma.posicao,
-    prisma.rastreador,
-    prisma.vinculoVeiculo,
-    prisma.veiculo,
-    prisma.movimentacaoItemSerial,
-    prisma.movimentacaoItem,
-    prisma.movimento,
-    prisma.triagem,
-    prisma.reserva,
-    prisma.inventarioItem,
-    prisma.inventario,
-    prisma.divergencia,
-    prisma.movimentacao,
-    prisma.entradaItem,
-    prisma.entrada,
-    prisma.unidadeSerial,
-    prisma.saldo,
-    prisma.auditoria,
-    prisma.eventoOS,
-    prisma.visaoSalva,
-    prisma.sessao,
-    prisma.materialPrevistoOS,
-    prisma.ordemServico,
-    prisma.localizacaoTecnico,
-    prisma.bairro,
-    prisma.regiao,
-    prisma.detentor,
-    prisma.material,
-    prisma.categoria,
-    prisma.fornecedor,
-    prisma.estoque,
-    prisma.tecnico,
-    prisma.equipe,
-    prisma.usuario,
-    prisma.configuracao,
-  ];
-  for (const tabela of tabelas) {
+  // O nome vai junto porque, quando o cliente Prisma está desatualizado, a
+  // entrada vem `undefined` e o erro sem isso é um TypeError sem pista de qual
+  // tabela faltou.
+  const tabelas: [string, unknown][] = Object.entries({
+    posicao: prisma.posicao,
+    rastreador: prisma.rastreador,
+    vinculoVeiculo: prisma.vinculoVeiculo,
+    veiculo: prisma.veiculo,
+    movimentacaoItemSerial: prisma.movimentacaoItemSerial,
+    movimentacaoItem: prisma.movimentacaoItem,
+    movimento: prisma.movimento,
+    triagem: prisma.triagem,
+    reserva: prisma.reserva,
+    inventarioItem: prisma.inventarioItem,
+    inventario: prisma.inventario,
+    divergencia: prisma.divergencia,
+    movimentacao: prisma.movimentacao,
+    entradaItem: prisma.entradaItem,
+    entrada: prisma.entrada,
+    unidadeSerial: prisma.unidadeSerial,
+    saldo: prisma.saldo,
+    auditoria: prisma.auditoria,
+    eventoOS: prisma.eventoOS,
+    visaoSalva: prisma.visaoSalva,
+    sessao: prisma.sessao,
+    materialPrevistoOS: prisma.materialPrevistoOS,
+    ordemServico: prisma.ordemServico,
+    localizacaoTecnico: prisma.localizacaoTecnico,
+    bairro: prisma.bairro,
+    regiao: prisma.regiao,
+    detentor: prisma.detentor,
+    material: prisma.material,
+    categoria: prisma.categoria,
+    fornecedor: prisma.fornecedor,
+    estoque: prisma.estoque,
+    tecnico: prisma.tecnico,
+    equipe: prisma.equipe,
+    usuario: prisma.usuario,
+    configuracao: prisma.configuracao,
+  });
+  for (const [nome, tabela] of tabelas) {
+    if (!tabela) {
+      throw new Error(
+        `A tabela "${nome}" não existe no cliente Prisma gerado.
+
+` +
+          `Isso acontece quando o schema mudou e o cliente não foi regenerado — ` +
+          `\`prisma migrate deploy\` aplica a migração mas não regenera.
+
+` +
+          `Rode:  npx prisma generate`,
+      );
+    }
     await (tabela as { deleteMany: () => Promise<unknown> }).deleteMany();
   }
 }
