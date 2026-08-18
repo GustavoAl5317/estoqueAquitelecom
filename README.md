@@ -162,6 +162,31 @@ Os pesos de cada critério são ajustáveis na Central de Controle.
 
 ## Integrações
 
+### O aparelho, e o que ele está rastreando
+
+A conta de rastreamento da operação não é uma frota: tem carro, **celular de
+técnico** e **equipamento caro** (OTDR, máquina de fusão) no mesmo lugar. Por
+isso quem reporta posição aqui é o `Rastreador`, e o que ele está rastreando é
+outra coisa:
+
+| Tipo | Alvo | O que resolve |
+|---|---|---|
+| `VEICULO` | um carro | posição vira do técnico pelo vínculo de motorista |
+| `PESSOA` | um técnico | a posição **já é** da pessoa, sem intermediário |
+| `EQUIPAMENTO` | uma unidade serializada | onde está o patrimônio (Bloco 1) |
+
+A sincronização importa o aparelho e **para aí**. Classificar é decisão humana,
+tomada na Central de Controle: a plataforma mistura os três, e adivinhar por
+nome acertaria a maioria e erraria o suficiente para alguém confiar num dado
+errado.
+
+Quando um técnico tem celular *e* carro, a fila e o roteiro usam o **celular** —
+quando ele desce para atender, o carro fica parado na rua e o celular vai junto.
+
+> Rastrear aparelho pessoal de funcionário tem implicação de LGPD e de acordo
+> trabalhista. O sistema não impõe política; ele registra o que a operação
+> configurar.
+
 ### Rastreamento da frota — Traccar
 
 A plataforma usada pela operação roda **Traccar 6.3**, com API REST
@@ -186,12 +211,14 @@ npm run traccar -- --importar       # cadastra os veículos que faltam
 npm run traccar -- --loop 60        # sincroniza a cada 60 segundos
 ```
 
-A amarração é pelo `uniqueId` do Traccar contra o campo **ID no rastreador** do
-cadastro de veículo, com a placa como alternativa.
+A amarração é pelo `uniqueId` do Traccar contra o `identificador` do rastreador.
+`--importar` traz os aparelhos sem classificá-los; a classificação é feita em
+`/central`.
 
-**O rastreador sabe onde está o carro, não onde está o técnico.** Quem transforma
-uma coisa na outra é o vínculo veículo↔técnico, mantido na Central de Controle.
-Toda troca de motorista fica no histórico.
+**Para carro, o rastreador sabe onde está o veículo, não onde está o técnico.**
+Quem transforma uma coisa na outra é o vínculo veículo↔técnico, mantido na
+Central de Controle. Toda troca de motorista fica no histórico. Para celular de
+técnico esse passo não existe.
 
 ### Recepção de posições por webhook
 
@@ -245,10 +272,11 @@ severidade, SLA com situação de prazo, carga por técnico, aderência ao SLA e
 material aplicado por atendimento. A importação automática do SGP ainda não
 traz dados — ver abaixo.
 
-**Bloco 3 — Geolocalização:** Central de Controle, frota, vínculo
-veículo↔técnico, ingestão de posições, mapa operacional, replay de trajeto com
-detecção de paradas, regiões e bairros com responsável principal e reserva,
-roteirização por proximidade e parâmetros de análise configuráveis.
+**Bloco 3 — Geolocalização:** Central de Controle, rastreadores de três
+naturezas (veículo, celular de técnico, equipamento), vínculo veículo↔técnico,
+ingestão de posições, mapa operacional, replay de trajeto com detecção de
+paradas, regiões e bairros com responsável principal e reserva, roteirização por
+proximidade e parâmetros de análise configuráveis.
 
 **Bloco 4 — Inteligência:** fila inteligente com recomendação explicada,
 score configurável e leitura da operação em linguagem corrente.

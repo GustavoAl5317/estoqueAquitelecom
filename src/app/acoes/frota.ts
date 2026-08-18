@@ -6,6 +6,7 @@ import { ErroDeNegocio } from "@/lib/servicos/nucleo";
 import {
   criarVeiculo,
   registrarPosicao,
+  vincularRastreador,
   vincularVeiculo,
 } from "@/lib/servicos/frota";
 import { salvarParametros } from "@/lib/servicos/parametros";
@@ -70,7 +71,35 @@ export async function acaoVincularVeiculo(
   );
 }
 
-/** Lançamento manual de posição, para quando o rastreador estiver mudo. */
+/**
+ * 3.1 — diz o que o aparelho está rastreando.
+ *
+ * É a operação que transforma uma lista de identificadores importados da
+ * plataforma em informação utilizável: sem ela, o sistema sabe que algo se
+ * moveu, mas não o quê.
+ */
+export async function acaoClassificarRastreador(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  return executar(
+    () =>
+      vincularRastreador(
+        {
+          rastreadorId: String(dados.get("rastreadorId")),
+          tipo: String(dados.get("tipo") ?? "NAO_CLASSIFICADO"),
+          veiculoId: texto(dados.get("veiculoId")),
+          tecnicoId: texto(dados.get("tecnicoId")),
+          unidadeSerialId: texto(dados.get("unidadeSerialId")),
+        },
+        usuario.id,
+      ),
+    ["/central", "/fila", "/roteiro", "/seriais"],
+  );
+}
+
+/** Lançamento manual de posição, para quando o aparelho estiver mudo. */
 export async function acaoRegistrarPosicao(
   _estado: Resultado,
   dados: FormData,
@@ -78,7 +107,7 @@ export async function acaoRegistrarPosicao(
   return executar(
     () =>
       registrarPosicao({
-        veiculoId: String(dados.get("veiculoId")),
+        rastreadorId: String(dados.get("rastreadorId")),
         latitude: Number(String(dados.get("latitude")).replace(",", ".")),
         longitude: Number(String(dados.get("longitude")).replace(",", ".")),
         endereco: texto(dados.get("endereco")),

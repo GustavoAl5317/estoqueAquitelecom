@@ -1,13 +1,27 @@
 import { prisma } from "@/lib/prisma";
 import { ErroDeNegocio, auditar, type Tx } from "./nucleo";
+import { TIPO_RASTREADOR } from "@/lib/dominio";
 
 /**
- * FROTA E LOCALIZAÇÃO (Bloco 3 — camada 1).
+ * RASTREAMENTO (Bloco 3).
  *
- * A posição vem do rastreador do veículo. O rastreador sabe onde está o carro;
- * quem está dirigindo é informação que só existe aqui, mantida na Central de
- * Controle. Sem esse vínculo, a coordenada não vira decisão operacional.
+ * Quem reporta posição é o **aparelho**. O que ele está rastreando é outra
+ * coisa, e pode ser de três naturezas:
+ *
+ *   VEICULO      o carro. Quem está dirigindo só se sabe pelo vínculo mantido
+ *                na Central de Controle — o rastreador não faz ideia.
+ *   PESSOA       o celular do técnico. Aqui não há intermediário: a posição já
+ *                é da pessoa, e é a fonte mais confiável que existe.
+ *   EQUIPAMENTO  OTDR, máquina de fusão. Amarra ao patrimônio serializado e
+ *                responde "onde está o equipamento" — pergunta do Bloco 1.
+ *
+ * Essa separação nasceu do que a operação já pratica: a conta de rastreamento
+ * tem carro, celular e equipamento no mesmo lugar.
  */
+
+// ---------------------------------------------------------------------------
+// Cadastro
+// ---------------------------------------------------------------------------
 
 export async function criarVeiculo(
   dados: {
@@ -30,10 +44,18 @@ export async function criarVeiculo(
       placa,
       apelido: dados.apelido?.trim() || null,
       modelo: dados.modelo?.trim() || null,
-      rastreador: dados.rastreador?.trim() || null,
       estoqueId: dados.estoqueId || null,
     },
   });
+
+  // quando a placa já vem com um aparelho conhecido, amarra na hora
+  const identificador = dados.rastreador?.trim();
+  if (identificador) {
+    await vincularRastreador(
+      { identificador, tipo: "VEICULO", veiculoId: veiculo.id },
+      usuarioId,
+    );
+  }
 
   await auditar(prisma, {
     entidade: "Veiculo",
@@ -45,6 +67,111 @@ export async function criarVeiculo(
   });
 
   return veiculo;
+}
+
+/** Registra um aparelho visto na plataforma de rastreamento, sem classificá-lo. */
+export async function registrarRastreador(dados: {
+  identificador: string;
+  nome: string;
+  modelo?: string | null;
+  ativo?: boolean;
+}) {
+  const identificador = dados.identificador.trim();
+  if (!identificador) throw new ErroDeNegocio("Informe o identificador do aparelho.");
+
+  return prisma.rastreador.upsert({
+    where: { identificador },
+    create: {
+      identificador,
+      nome: dados.nome.trim() || identificador,
+      modelo: dados.modelo?.trim() || null,
+      ativo: dados.ativo ?? true,
+    },
+    update: {
+      nome: dados.nome.trim() || identificador,
+      modelo: dados.modelo?.trim() || null,
+      ativo: dados.ativo ?? true,
+    },
+  });
+}
+
+/**
+ * 3.1 — Diz o que o aparelho está rastreando.
+ *
+ * O alvo é exclusivo: um aparelho não está em um carro e numa pessoa ao mesmo
+ * tempo. Trocar o tipo limpa o alvo anterior, para não deixar vínculo órfão
+ * apontando para um carro que ninguém mais associa àquele aparelho.
+ */
+export async function vincularRastreador(
+  dados: {
+    identificador?: string;
+    rastreadorId?: string;
+    tipo: string;
+    veiculoId?: string | null;
+    tecnicoId?: string | null;
+    unidadeSerialId?: string | null;
+  },
+  usuarioId: string,
+) {
+  if (!TIPO_RASTREADOR.inclui(dados.tipo)) {
+    throw new ErroDeNegocio("Tipo de rastreador inválido.");
+  }
+
+  const rastreador = dados.rastreadorId
+    ? await prisma.rastreador.findUnique({ where: { id: dados.rastreadorId } })
+    : dados.identificador
+      ? await prisma.rastreador.findUnique({
+          where: { identificador: dados.identificador.trim() },
+        })
+      : null;
+
+  if (!rastreador) throw new ErroDeNegocio("Rastreador não encontrado.");
+
+  const alvo = {
+    veiculoId: dados.tipo === "VEICULO" ? dados.veiculoId || null : null,
+    tecnicoId: dados.tipo === "PESSOA" ? dados.tecnicoId || null : null,
+    unidadeSerialId:
+      dados.tipo === "EQUIPAMENTO" ? dados.unidadeSerialId || null : null,
+  };
+
+  if (dados.tipo !== "NAO_CLASSIFICADO" && !Object.values(alvo).some(Boolean)) {
+    throw new ErroDeNegocio(
+      `Escolha a que ${TIPO_RASTREADOR.rotulo(dados.tipo).toLowerCase()} este aparelho pertence.`,
+    );
+  }
+
+  // o alvo é exclusivo dos dois lados: libera quem já ocupava o lugar
+  for (const [campo, valor] of Object.entries(alvo)) {
+    if (!valor) continue;
+    await prisma.rastreador.updateMany({
+      where: { [campo]: valor, id: { not: rastreador.id } },
+      data: { [campo]: null, tipo: "NAO_CLASSIFICADO" },
+    });
+  }
+
+  const atualizado = await prisma.rastreador.update({
+    where: { id: rastreador.id },
+    data: { tipo: dados.tipo, ...alvo },
+    include: { veiculo: true, tecnico: true, unidadeSerial: true },
+  });
+
+  const descricaoAlvo =
+    atualizado.veiculo?.placa ??
+    atualizado.tecnico?.nome ??
+    atualizado.unidadeSerial?.serial ??
+    "nada";
+
+  await auditar(prisma, {
+    entidade: "Rastreador",
+    entidadeId: rastreador.id,
+    acao: "EDICAO",
+    descricao: `Rastreador ${rastreador.nome} classificado como ${TIPO_RASTREADOR.rotulo(dados.tipo)} → ${descricaoAlvo}.`,
+    usuarioId,
+    antes: { tipo: rastreador.tipo },
+    depois: { tipo: dados.tipo, alvo: descricaoAlvo },
+  });
+
+  return atualizado;
 }
 
 /**
@@ -126,12 +253,17 @@ export async function vincularVeiculo(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Ingestão de posição
+// ---------------------------------------------------------------------------
+
 /** Ingestão de posição — usada pelo conector do rastreador e pelo lançamento manual. */
 export async function registrarPosicao(dados: {
-  /** identifica o veículo por id, placa ou identificador do rastreador */
+  /** identifica o aparelho por id, identificador, placa do veículo ou id do veículo */
+  rastreadorId?: string;
+  identificador?: string;
   veiculoId?: string;
   placa?: string;
-  rastreador?: string;
   latitude: number;
   longitude: number;
   velocidade?: number | null;
@@ -140,8 +272,10 @@ export async function registrarPosicao(dados: {
   capturadoEm?: Date;
   origem?: string;
 }) {
-  const veiculo = await encontrarVeiculo(prisma, dados);
-  if (!veiculo) throw new ErroDeNegocio("Veículo não identificado para esta posição.");
+  const rastreador = await encontrarRastreador(prisma, dados);
+  if (!rastreador) {
+    throw new ErroDeNegocio("Rastreador não identificado para esta posição.");
+  }
 
   if (
     !Number.isFinite(dados.latitude) ||
@@ -152,9 +286,9 @@ export async function registrarPosicao(dados: {
     throw new ErroDeNegocio("Coordenada inválida.");
   }
 
-  return prisma.posicaoVeiculo.create({
+  return prisma.posicao.create({
     data: {
-      veiculoId: veiculo.id,
+      rastreadorId: rastreador.id,
       latitude: dados.latitude,
       longitude: dados.longitude,
       velocidade: dados.velocidade ?? null,
@@ -166,38 +300,74 @@ export async function registrarPosicao(dados: {
   });
 }
 
-async function encontrarVeiculo(
+async function encontrarRastreador(
   tx: Tx,
-  chaves: { veiculoId?: string; placa?: string; rastreador?: string },
+  chaves: {
+    rastreadorId?: string;
+    identificador?: string;
+    veiculoId?: string;
+    placa?: string;
+  },
 ) {
-  if (chaves.veiculoId) {
-    return tx.veiculo.findUnique({ where: { id: chaves.veiculoId } });
+  if (chaves.rastreadorId) {
+    return tx.rastreador.findUnique({ where: { id: chaves.rastreadorId } });
   }
-  if (chaves.rastreador) {
-    const achado = await tx.veiculo.findUnique({
-      where: { rastreador: chaves.rastreador.trim() },
+  if (chaves.identificador) {
+    const achado = await tx.rastreador.findUnique({
+      where: { identificador: chaves.identificador.trim() },
     });
     if (achado) return achado;
   }
+  if (chaves.veiculoId) {
+    return tx.rastreador.findFirst({ where: { veiculoId: chaves.veiculoId } });
+  }
   if (chaves.placa) {
-    return tx.veiculo.findUnique({
+    const veiculo = await tx.veiculo.findUnique({
       where: { placa: chaves.placa.trim().toUpperCase() },
     });
+    if (veiculo) {
+      return tx.rastreador.findFirst({ where: { veiculoId: veiculo.id } });
+    }
   }
   return null;
 }
 
-export type SituacaoFrota = {
+// ---------------------------------------------------------------------------
+// Leitura
+// ---------------------------------------------------------------------------
+
+export type Frescor = "ATUAL" | "RECENTE" | "DESATUALIZADA" | "SEM_SINAL";
+
+export function classificarFrescor(capturadoEm: Date | null): {
+  frescor: Frescor;
+  atrasoMinutos: number | null;
+} {
+  if (!capturadoEm) return { frescor: "SEM_SINAL", atrasoMinutos: null };
+  const atraso = Math.floor((Date.now() - capturadoEm.getTime()) / 60_000);
+  return {
+    frescor:
+      atraso <= 5 ? "ATUAL" : atraso <= 30 ? "RECENTE" : atraso <= 240 ? "DESATUALIZADA" : "SEM_SINAL",
+    atrasoMinutos: atraso,
+  };
+}
+
+export type SituacaoRastreador = {
   id: string;
-  placa: string;
-  apelido: string | null;
-  modelo: string | null;
-  rastreador: string | null;
+  identificador: string;
+  nome: string;
+  tipo: string;
   ativo: boolean;
+  /** descrição do que está sendo rastreado */
+  alvo: string | null;
+  veiculoId: string | null;
+  placa: string | null;
+  /** o técnico que esta posição representa, quando representa algum */
   tecnicoId: string | null;
   tecnicoNome: string | null;
   equipeNome: string | null;
-  estoqueNome: string | null;
+  unidadeSerialId: string | null;
+  serial: string | null;
+  /** detentor do estoque associado, para conferir material em posse */
   detentorId: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -205,65 +375,148 @@ export type SituacaoFrota = {
   ignicao: boolean | null;
   endereco: string | null;
   capturadoEm: Date | null;
-  /** minutos desde a última posição recebida */
   atrasoMinutos: number | null;
-  /** 3.8 — a posição é atual ou já está velha? */
-  frescor: "ATUAL" | "RECENTE" | "DESATUALIZADA" | "SEM_SINAL";
+  frescor: Frescor;
 };
 
-/** 3.7 / 3.8 — situação de cada veículo, com aviso de posição desatualizada. */
-export async function situacaoDaFrota(): Promise<SituacaoFrota[]> {
-  const veiculos = await prisma.veiculo.findMany({
+/** 3.7 / 3.8 — situação de cada aparelho, com aviso de posição desatualizada. */
+export async function situacaoDosRastreadores(): Promise<SituacaoRastreador[]> {
+  const rastreadores = await prisma.rastreador.findMany({
     include: {
-      tecnicoAtual: { include: { equipe: true, detentor: true } },
-      estoque: { include: { detentor: true } },
+      veiculo: {
+        include: {
+          tecnicoAtual: { include: { equipe: true, detentor: true } },
+          estoque: { include: { detentor: true } },
+        },
+      },
+      tecnico: { include: { equipe: true, detentor: true } },
+      unidadeSerial: { include: { material: { select: { nome: true } } } },
       posicoes: { orderBy: { capturadoEm: "desc" }, take: 1 },
     },
-    orderBy: [{ ativo: "desc" }, { placa: "asc" }],
+    orderBy: [{ tipo: "asc" }, { nome: "asc" }],
   });
 
-  return veiculos.map((veiculo) => {
-    const posicao = veiculo.posicoes[0] ?? null;
-    const atraso = posicao
-      ? Math.floor((Date.now() - posicao.capturadoEm.getTime()) / 60_000)
-      : null;
+  return rastreadores.map((r) => {
+    const posicao = r.posicoes[0] ?? null;
+    const { frescor, atrasoMinutos } = classificarFrescor(
+      posicao?.capturadoEm ?? null,
+    );
+
+    // para VEICULO a pessoa vem do vínculo; para PESSOA o aparelho já é dela
+    const tecnico = r.tecnico ?? r.veiculo?.tecnicoAtual ?? null;
 
     return {
-      id: veiculo.id,
-      placa: veiculo.placa,
-      apelido: veiculo.apelido,
-      modelo: veiculo.modelo,
-      rastreador: veiculo.rastreador,
-      ativo: veiculo.ativo,
-      tecnicoId: veiculo.tecnicoAtualId,
-      tecnicoNome: veiculo.tecnicoAtual?.nome ?? null,
-      equipeNome: veiculo.tecnicoAtual?.equipe?.nome ?? null,
-      estoqueNome: veiculo.estoque?.nome ?? null,
+      id: r.id,
+      identificador: r.identificador,
+      nome: r.nome,
+      tipo: r.tipo,
+      ativo: r.ativo,
+      alvo:
+        r.veiculo?.placa ??
+        r.tecnico?.nome ??
+        (r.unidadeSerial
+          ? `${r.unidadeSerial.material.nome} · ${r.unidadeSerial.serial}`
+          : null),
+      veiculoId: r.veiculoId,
+      placa: r.veiculo?.placa ?? null,
+      tecnicoId: tecnico?.id ?? null,
+      tecnicoNome: tecnico?.nome ?? null,
+      equipeNome: tecnico?.equipe?.nome ?? null,
+      unidadeSerialId: r.unidadeSerialId,
+      serial: r.unidadeSerial?.serial ?? null,
       detentorId:
-        veiculo.tecnicoAtual?.detentor?.id ?? veiculo.estoque?.detentor?.id ?? null,
+        tecnico?.detentor?.id ?? r.veiculo?.estoque?.detentor?.id ?? null,
       latitude: posicao?.latitude ?? null,
       longitude: posicao?.longitude ?? null,
       velocidade: posicao?.velocidade ?? null,
       ignicao: posicao?.ignicao ?? null,
       endereco: posicao?.endereco ?? null,
       capturadoEm: posicao?.capturadoEm ?? null,
-      atrasoMinutos: atraso,
-      frescor:
-        atraso === null
-          ? "SEM_SINAL"
-          : atraso <= 5
-            ? "ATUAL"
-            : atraso <= 30
-              ? "RECENTE"
-              : "DESATUALIZADA",
+      atrasoMinutos,
+      frescor,
     };
   });
 }
 
-export async function historicoDoVeiculo(veiculoId: string, horas = 24) {
+/** compatibilidade: a frota é o recorte dos aparelhos instalados em veículos */
+export async function situacaoDaFrota() {
+  return (await situacaoDosRastreadores()).filter((r) => r.tipo === "VEICULO");
+}
+
+export type PosicaoDoTecnico = {
+  tecnicoId: string;
+  tecnicoNome: string;
+  equipeNome: string | null;
+  detentorId: string | null;
+  latitude: number;
+  longitude: number;
+  /** CELULAR | VEICULO — de onde veio a coordenada */
+  fonte: "CELULAR" | "VEICULO";
+  referencia: string;
+  capturadoEm: Date;
+  atrasoMinutos: number | null;
+  frescor: Frescor;
+};
+
+/**
+ * 3.19 — ONDE CADA TÉCNICO ESTÁ.
+ *
+ * O celular ganha do veículo sempre que existir: ele é a pessoa, enquanto o
+ * carro é só um lugar onde a pessoa provavelmente está. Quando o técnico
+ * desce para atender, o carro fica parado na rua e o celular vai junto —
+ * e é essa diferença que decide bem uma alocação.
+ */
+export async function posicoesDosTecnicos(): Promise<PosicaoDoTecnico[]> {
+  const rastreadores = await situacaoDosRastreadores();
+
+  const porTecnico = new Map<string, PosicaoDoTecnico>();
+
+  for (const r of rastreadores) {
+    if (r.tipo !== "PESSOA" && r.tipo !== "VEICULO") continue;
+    if (!r.tecnicoId || r.latitude === null || r.longitude === null) continue;
+    if (!r.capturadoEm) continue;
+
+    const fonte = r.tipo === "PESSOA" ? "CELULAR" : "VEICULO";
+    const candidato: PosicaoDoTecnico = {
+      tecnicoId: r.tecnicoId,
+      tecnicoNome: r.tecnicoNome!,
+      equipeNome: r.equipeNome,
+      detentorId: r.detentorId,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      fonte,
+      referencia: r.alvo ?? r.nome,
+      capturadoEm: r.capturadoEm,
+      atrasoMinutos: r.atrasoMinutos,
+      frescor: r.frescor,
+    };
+
+    const atual = porTecnico.get(r.tecnicoId);
+    if (!atual) {
+      porTecnico.set(r.tecnicoId, candidato);
+      continue;
+    }
+
+    // celular vence veículo; entre iguais, vence a leitura mais recente
+    const melhor =
+      atual.fonte === candidato.fonte
+        ? candidato.capturadoEm > atual.capturadoEm
+          ? candidato
+          : atual
+        : candidato.fonte === "CELULAR"
+          ? candidato
+          : atual;
+
+    porTecnico.set(r.tecnicoId, melhor);
+  }
+
+  return [...porTecnico.values()];
+}
+
+export async function historicoDoRastreador(rastreadorId: string, horas = 24) {
   const desde = new Date(Date.now() - horas * 3_600_000);
-  return prisma.posicaoVeiculo.findMany({
-    where: { veiculoId, capturadoEm: { gte: desde } },
+  return prisma.posicao.findMany({
+    where: { rastreadorId, capturadoEm: { gte: desde } },
     orderBy: { capturadoEm: "asc" },
   });
 }
@@ -303,28 +556,20 @@ export async function tecnicosProximos(
   alvo: { latitude: number; longitude: number },
   opcoes?: { materiaisNecessarios?: { materialId: string; quantidade: number }[] },
 ) {
-  const frota = (await situacaoDaFrota()).filter(
-    (v) => v.tecnicoId && v.latitude !== null && v.longitude !== null,
-  );
-
+  const posicoes = await posicoesDosTecnicos();
   const resultado = [];
 
-  for (const veiculo of frota) {
-    const distancia = distanciaKm(
-      { latitude: veiculo.latitude!, longitude: veiculo.longitude! },
-      alvo,
-    );
-
+  for (const posicao of posicoes) {
     let temMaterial = true;
     const faltando: string[] = [];
 
-    if (opcoes?.materiaisNecessarios?.length && veiculo.detentorId) {
+    if (opcoes?.materiaisNecessarios?.length && posicao.detentorId) {
       for (const necessario of opcoes.materiaisNecessarios) {
         const saldo = await prisma.saldo.findUnique({
           where: {
             materialId_detentorId: {
               materialId: necessario.materialId,
-              detentorId: veiculo.detentorId,
+              detentorId: posicao.detentorId,
             },
           },
           include: { material: { select: { nome: true } } },
@@ -338,18 +583,25 @@ export async function tecnicosProximos(
     }
 
     resultado.push({
-      veiculoId: veiculo.id,
-      placa: veiculo.placa,
-      tecnicoId: veiculo.tecnicoId!,
-      tecnicoNome: veiculo.tecnicoNome!,
-      equipeNome: veiculo.equipeNome,
-      distanciaKm: distancia,
-      frescor: veiculo.frescor,
-      atrasoMinutos: veiculo.atrasoMinutos,
+      tecnicoId: posicao.tecnicoId,
+      tecnicoNome: posicao.tecnicoNome,
+      equipeNome: posicao.equipeNome,
+      referencia: posicao.referencia,
+      fonte: posicao.fonte,
+      distanciaKm: distanciaKm(posicao, alvo),
+      frescor: posicao.frescor,
+      atrasoMinutos: posicao.atrasoMinutos,
       temMaterial,
       faltando,
     });
   }
 
   return resultado.sort((a, b) => a.distanciaKm - b.distanciaKm);
+}
+
+/** 1.x — onde está cada equipamento rastreado do patrimônio. */
+export async function equipamentosRastreados() {
+  return (await situacaoDosRastreadores()).filter(
+    (r) => r.tipo === "EQUIPAMENTO",
+  );
 }

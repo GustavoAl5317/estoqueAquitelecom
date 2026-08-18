@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ErroDeNegocio } from "./nucleo";
-import { registrarPosicao } from "./frota";
+import { registrarPosicao, registrarRastreador } from "./frota";
 
 /**
  * CONECTOR TRACCAR.
@@ -10,8 +10,14 @@ import { registrarPosicao } from "./frota";
  * qualquer engenharia reversa: consultamos os dispositivos e as posições, e
  * gravamos aqui pelo mesmo caminho da ingestão por webhook.
  *
- * A amarração acontece por `uniqueId` do Traccar ↔ campo "ID no rastreador"
- * do veículo. Quando não bate, tentamos pela placa.
+ * A amarração acontece por `uniqueId` do Traccar ↔ `identificador` do
+ * rastreador aqui. O que o aparelho está rastreando — carro, celular de
+ * técnico ou equipamento — é decisão humana, tomada na Central de Controle:
+ * a sincronização importa o aparelho e para por aí.
+ *
+ * Essa recusa em adivinhar é deliberada. A conta da operação mistura carro,
+ * celular pessoal e OTDR; classificar por heurística de nome acertaria a
+ * maioria e erraria o suficiente para alguém confiar num dado errado.
  */
 
 type Config = { url: string; cabecalhos: Record<string, string> };
@@ -122,27 +128,30 @@ export type ResultadoSincronizacao = {
   dispositivos: number;
   posicoesRecebidas: number;
   posicoesGravadas: number;
-  veiculosCriados: string[];
-  semVinculo: { uniqueId: string; nome: string }[];
+  /** aparelhos que passaram a existir aqui nesta rodada */
+  rastreadoresCriados: string[];
+  /** aparelhos importados que ninguém classificou ainda */
+  naoClassificados: { identificador: string; nome: string }[];
   erros: string[];
 };
 
 /**
- * Puxa as posições atuais e grava as que pertencem a veículos conhecidos.
+ * Puxa dispositivos e posições do Traccar.
  *
- * `criarVeiculos` cadastra automaticamente os dispositivos que ainda não
- * existem aqui — útil na primeira carga; depois disso, o normal é deixar
- * desligado para não poluir a frota com rastreadores de terceiros.
+ * Todo aparelho da conta vira um `Rastreador` aqui — inclusive os que não
+ * interessam — porque só depois de existir é que alguém pode olhar a lista e
+ * dizer o que é cada um. O que ele *não* faz é criar veículo: um OTDR virando
+ * "veículo TRC-865011..." é o tipo de sujeira que ninguém limpa depois.
  */
 export async function sincronizarPosicoes(
-  opcoes: { criarVeiculos?: boolean } = {},
+  opcoes: { importarNovos?: boolean } = {},
 ): Promise<ResultadoSincronizacao> {
   const resultado: ResultadoSincronizacao = {
     dispositivos: 0,
     posicoesRecebidas: 0,
     posicoesGravadas: 0,
-    veiculosCriados: [],
-    semVinculo: [],
+    rastreadoresCriados: [],
+    naoClassificados: [],
     erros: [],
   };
 
@@ -160,45 +169,39 @@ export async function sincronizarPosicoes(
     const dispositivo = porId.get(posicao.deviceId);
     if (!dispositivo) continue;
 
-    let veiculo = await prisma.veiculo.findFirst({
-      where: {
-        OR: [
-          { rastreador: dispositivo.uniqueId },
-          { placa: normalizarPlaca(dispositivo.name) },
-        ],
-      },
+    let rastreador = await prisma.rastreador.findUnique({
+      where: { identificador: dispositivo.uniqueId },
     });
 
-    if (!veiculo && opcoes.criarVeiculos) {
-      const placa = normalizarPlaca(dispositivo.name) || `TRC-${dispositivo.uniqueId}`;
-      const jaExiste = await prisma.veiculo.findUnique({ where: { placa } });
-      if (!jaExiste) {
-        veiculo = await prisma.veiculo.create({
-          data: {
-            placa,
-            apelido: dispositivo.name,
-            modelo: dispositivo.model ?? null,
-            rastreador: dispositivo.uniqueId,
-            ativo: !dispositivo.disabled,
-          },
+    if (!rastreador) {
+      if (!opcoes.importarNovos) {
+        resultado.naoClassificados.push({
+          identificador: dispositivo.uniqueId,
+          nome: dispositivo.name,
         });
-        resultado.veiculosCriados.push(`${placa} (${dispositivo.name})`);
-      } else {
-        veiculo = jaExiste;
+        continue;
       }
+      rastreador = await registrarRastreador({
+        identificador: dispositivo.uniqueId,
+        nome: dispositivo.name,
+        modelo: dispositivo.model ?? null,
+        ativo: !dispositivo.disabled,
+      });
+      resultado.rastreadoresCriados.push(
+        `${dispositivo.name} (${dispositivo.uniqueId})`,
+      );
     }
 
-    if (!veiculo) {
-      resultado.semVinculo.push({
-        uniqueId: dispositivo.uniqueId,
-        nome: dispositivo.name,
+    if (rastreador.tipo === "NAO_CLASSIFICADO") {
+      resultado.naoClassificados.push({
+        identificador: rastreador.identificador,
+        nome: rastreador.nome,
       });
-      continue;
     }
 
     // evita regravar a mesma leitura a cada ciclo
-    const ultima = await prisma.posicaoVeiculo.findFirst({
-      where: { veiculoId: veiculo.id },
+    const ultima = await prisma.posicao.findFirst({
+      where: { rastreadorId: rastreador.id },
       orderBy: { capturadoEm: "desc" },
       select: { capturadoEm: true },
     });
@@ -208,7 +211,7 @@ export async function sincronizarPosicoes(
 
     try {
       await registrarPosicao({
-        veiculoId: veiculo.id,
+        rastreadorId: rastreador.id,
         latitude: posicao.latitude,
         longitude: posicao.longitude,
         velocidade: Math.round(posicao.speed * NO_PARA_KMH),
@@ -231,9 +234,27 @@ export async function sincronizarPosicoes(
   return resultado;
 }
 
-/** "ABC-1D23" ou "abc1d23" viram "ABC1D23" */
-function normalizarPlaca(texto: string | null | undefined) {
-  if (!texto) return "";
-  const limpo = texto.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(limpo) ? limpo : "";
+/** Importa o catálogo de aparelhos sem depender de haver posição para eles. */
+export async function importarDispositivos() {
+  const dispositivos = await listarDispositivos();
+  const criados: string[] = [];
+
+  for (const dispositivo of dispositivos) {
+    const existente = await prisma.rastreador.findUnique({
+      where: { identificador: dispositivo.uniqueId },
+    });
+    await registrarRastreador({
+      identificador: dispositivo.uniqueId,
+      nome: dispositivo.name,
+      modelo: dispositivo.model ?? null,
+      ativo: !dispositivo.disabled,
+    });
+    if (!existente) criados.push(`${dispositivo.name} (${dispositivo.uniqueId})`);
+  }
+
+  const pendentes = await prisma.rastreador.count({
+    where: { tipo: "NAO_CLASSIFICADO" },
+  });
+
+  return { total: dispositivos.length, criados, pendentes };
 }

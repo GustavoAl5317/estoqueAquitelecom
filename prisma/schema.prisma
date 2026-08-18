@@ -25,14 +25,14 @@ datasource db {
 // ===========================================================================
 
 model Usuario {
-  id        String   @id @default(cuid())
-  nome      String
-  email     String   @unique
-  papel     String // ADMIN | SUPERVISOR | ALMOXARIFE | TECNICO | VISUALIZACAO
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
+  id       String   @id @default(cuid())
+  nome     String
+  email    String   @unique
+  papel    String // ADMIN | SUPERVISOR | ALMOXARIFE | TECNICO | VISUALIZACAO
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
 
-  tecnico   Tecnico?
+  tecnico Tecnico?
 
   estoquesSobResponsabilidade Estoque[]        @relation("EstoqueResponsavel")
   entradasCriadas             Entrada[]        @relation("EntradaCriadaPor")
@@ -71,20 +71,21 @@ model Tecnico {
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
 
-  equipe   Equipe?  @relation(fields: [equipeId], references: [id])
+  equipe   Equipe? @relation(fields: [equipeId], references: [id])
   equipeId String?
 
   usuario   Usuario? @relation(fields: [usuarioId], references: [id])
   usuarioId String?  @unique
 
-  detentor      Detentor?
-  reservas      Reserva[]
-  localizacoes  LocalizacaoTecnico[]
-  ordens        OrdemServico[]
-  veiculosAtuais Veiculo[]        @relation("VeiculoTecnicoAtual")
-  vinculosVeiculo VinculoVeiculo[]
-  bairrosPrimario   Bairro[] @relation("BairroPrincipal")
-  bairrosSecundario Bairro[] @relation("BairroSecundario")
+  detentor          Detentor?
+  reservas          Reserva[]
+  localizacoes      LocalizacaoTecnico[]
+  ordens            OrdemServico[]
+  veiculosAtuais    Veiculo[]            @relation("VeiculoTecnicoAtual")
+  vinculosVeiculo   VinculoVeiculo[]
+  rastreador        Rastreador?
+  bairrosPrimario   Bairro[]             @relation("BairroPrincipal")
+  bairrosSecundario Bairro[]             @relation("BairroSecundario")
 }
 
 // ===========================================================================
@@ -128,7 +129,7 @@ model Detentor {
   entradas        Entrada[]
   reservas        Reserva[]
   inventarios     Inventario[]
-  triagensDestino Triagem[]        @relation("TriagemDestino")
+  triagensDestino Triagem[]       @relation("TriagemDestino")
 
   movimentacoesOrigem  Movimentacao[] @relation("MovimentacaoOrigem")
   movimentacoesDestino Movimentacao[] @relation("MovimentacaoDestino")
@@ -165,34 +166,34 @@ model Fornecedor {
 }
 
 model Material {
-  id             String   @id @default(cuid())
-  codigoInterno  String   @unique
-  nome           String
-  fabricante     String?
-  modelo         String?
-  unidadeMedida  String   @default("UN") // UN | M | PC | CX | KG | L | ROLO
+  id               String   @id @default(cuid())
+  codigoInterno    String   @unique
+  nome             String
+  fabricante       String?
+  modelo           String?
+  unidadeMedida    String   @default("UN") // UN | M | PC | CX | KG | L | ROLO
   /// QUANTIDADE = 1.3 não serializado | SERIAL = 1.3 serializado
-  controle       String   @default("QUANTIDADE")
-  quantidadeMinima Float  @default(0)
-  quantidadeIdeal  Float  @default(0)
-  valorMedio     Float    @default(0)
-  codigoBarras   String?
-  descricao      String?
-  status         String   @default("ATIVO") // ATIVO | INATIVO
-  criadoEm       DateTime @default(now())
-  atualizadoEm   DateTime @updatedAt
+  controle         String   @default("QUANTIDADE")
+  quantidadeMinima Float    @default(0)
+  quantidadeIdeal  Float    @default(0)
+  valorMedio       Float    @default(0)
+  codigoBarras     String?
+  descricao        String?
+  status           String   @default("ATIVO") // ATIVO | INATIVO
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
 
   categoria   Categoria @relation(fields: [categoriaId], references: [id])
   categoriaId String
 
-  saldos          Saldo[]
-  unidades        UnidadeSerial[]
-  entradaItens    EntradaItem[]
-  movimentacaoItens MovimentacaoItem[]
-  movimentos      Movimento[]
-  reservas        Reserva[]
-  inventarioItens InventarioItem[]
-  triagens        Triagem[]
+  saldos             Saldo[]
+  unidades           UnidadeSerial[]
+  entradaItens       EntradaItem[]
+  movimentacaoItens  MovimentacaoItem[]
+  movimentos         Movimento[]
+  reservas           Reserva[]
+  inventarioItens    InventarioItem[]
+  triagens           Triagem[]
   materiaisPrevistos MaterialPrevistoOS[]
 
   @@index([categoriaId])
@@ -219,24 +220,24 @@ model Saldo {
 
 /// 1.3 / 1.13 — unidade individual de material serializado
 model UnidadeSerial {
-  id           String   @id @default(cuid())
-  serial       String   @unique
-  macAddress   String?
-  patrimonio   String?
-  codigoBarras String?
-  lote         String?
+  id            String   @id @default(cuid())
+  serial        String   @unique
+  macAddress    String?
+  patrimonio    String?
+  codigoBarras  String?
+  lote          String?
   /// 1.11 — NOVO | USADO | BOM | DANIFICADO | DEFEITUOSO | MANUTENCAO | SUCATA
-  estadoFisico String   @default("NOVO")
+  estadoFisico  String   @default("NOVO")
   /// 1.13 — DISPONIVEL | EM_POSSE_TECNICO | EM_USO | INSTALADO | AGUARDANDO_DEVOLUCAO |
   ///        DEVOLVIDO | EM_TRIAGEM | EM_MANUTENCAO | DEFEITUOSO | PERDIDO | SUCATA | BAIXADO
-  status       String   @default("DISPONIVEL")
+  status        String   @default("DISPONIVEL")
   valorUnitario Float?
   /// referência do cliente onde a unidade está instalada (base da logística reversa)
-  clienteRef   String?
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  clienteRef    String?
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
 
-  material   Material @relation(fields: [materialId], references: [id])
+  material   Material  @relation(fields: [materialId], references: [id])
   materialId String
   detentor   Detentor? @relation(fields: [detentorId], references: [id])
   detentorId String?
@@ -244,10 +245,11 @@ model UnidadeSerial {
   entradaItem   EntradaItem? @relation(fields: [entradaItemId], references: [id])
   entradaItemId String?
 
-  movimentos       Movimento[]
-  reservas         Reserva[]
-  triagens         Triagem[]
+  movimentos        Movimento[]
+  reservas          Reserva[]
+  triagens          Triagem[]
   movimentacaoItens MovimentacaoItemSerial[]
+  rastreador        Rastreador?
 
   @@index([materialId])
   @@index([detentorId])
@@ -294,34 +296,34 @@ model Entrada {
 }
 
 model EntradaItem {
-  id                  String  @id @default(cuid())
-  quantidadePrevista  Float
-  quantidadeRecebida  Float?
-  valorUnitario       Float?
-  lote                String?
+  id                 String  @id @default(cuid())
+  quantidadePrevista Float
+  quantidadeRecebida Float?
+  valorUnitario      Float?
+  lote               String?
   /// 1.4 — seriais cadastrados/importados já na entrada, confirmados no recebimento
   /// (lista JSON serializada; SQLite não possui tipo Json)
-  seriaisPrevistos    String?
+  seriaisPrevistos   String?
 
   entrada    Entrada  @relation(fields: [entradaId], references: [id], onDelete: Cascade)
   entradaId  String
   material   Material @relation(fields: [materialId], references: [id])
   materialId String
 
-  seriais      UnidadeSerial[]
-  divergencia  Divergencia?
+  seriais     UnidadeSerial[]
+  divergencia Divergencia?
 
   @@index([entradaId])
 }
 
 /// 1.6 — permanece no histórico para sempre
 model Divergencia {
-  id         String   @id @default(cuid())
-  previsto   Float
-  recebido   Float
-  diferenca  Float
-  motivo     String
-  criadoEm   DateTime @default(now())
+  id        String   @id @default(cuid())
+  previsto  Float
+  recebido  Float
+  diferenca Float
+  motivo    String
+  criadoEm  DateTime @default(now())
 
   entradaItem   EntradaItem @relation(fields: [entradaItemId], references: [id], onDelete: Cascade)
   entradaItemId String      @unique
@@ -337,10 +339,10 @@ model Divergencia {
 // ===========================================================================
 
 model Movimentacao {
-  id     String @id @default(cuid())
-  numero String @unique
+  id         String @id @default(cuid())
+  numero     String @unique
   /// SAIDA | TRANSFERENCIA | DEVOLUCAO | AJUSTE | BAIXA
-  tipo   String
+  tipo       String
   /// 1.7 — TECNICO | EQUIPE | ORDEM_SERVICO | TRANSFERENCIA | USO_INTERNO | BAIXA |
   ///       PERDA | DEFEITO | INSTALACAO | MANUTENCAO | RETIRADA_CLIENTE | AJUSTE_INVENTARIO
   finalidade String
@@ -350,10 +352,10 @@ model Movimentacao {
   motivo     String?
   observacao String?
 
-  origem     Detentor? @relation("MovimentacaoOrigem", fields: [origemId], references: [id])
-  origemId   String?
-  destino    Detentor? @relation("MovimentacaoDestino", fields: [destinoId], references: [id])
-  destinoId  String?
+  origem    Detentor? @relation("MovimentacaoOrigem", fields: [origemId], references: [id])
+  origemId  String?
+  destino   Detentor? @relation("MovimentacaoDestino", fields: [destinoId], references: [id])
+  destinoId String?
 
   solicitante   Usuario? @relation("MovimentacaoSolicitante", fields: [solicitanteId], references: [id])
   solicitanteId String?
@@ -378,8 +380,8 @@ model Movimentacao {
 }
 
 model MovimentacaoItem {
-  id         String @id @default(cuid())
-  quantidade Float
+  id            String  @id @default(cuid())
+  quantidade    Float
   /// 1.11 — estado informado na devolução
   estadoFisico  String?
   valorUnitario Float?
@@ -397,9 +399,9 @@ model MovimentacaoItem {
 model MovimentacaoItemSerial {
   id String @id @default(cuid())
 
-  item   MovimentacaoItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  itemId String
-  unidade   UnidadeSerial @relation(fields: [unidadeId], references: [id])
+  item      MovimentacaoItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  unidade   UnidadeSerial    @relation(fields: [unidadeId], references: [id])
   unidadeId String
 
   @@unique([itemId, unidadeId])
@@ -411,11 +413,11 @@ model MovimentacaoItemSerial {
 // ===========================================================================
 
 model Movimento {
-  id String @id @default(cuid())
+  id            String   @id @default(cuid())
   /// ENTRADA | SAIDA | TRANSFERENCIA | DEVOLUCAO | AJUSTE | BAIXA | TRIAGEM |
   /// RESERVA | LIBERACAO_RESERVA | INSTALACAO | RETIRADA_CLIENTE
-  tipo       String
-  quantidade Float
+  tipo          String
+  quantidade    Float
   /// impacto no saldo do detentor de destino (+) ou origem (−); informativo para relatórios
   valorUnitario Float?
   observacao    String?
@@ -463,15 +465,15 @@ model Movimento {
 // ===========================================================================
 
 model Reserva {
-  id         String @id @default(cuid())
-  quantidade Float
+  id          String    @id @default(cuid())
+  quantidade  Float
   /// ORDEM_SERVICO | EQUIPE | TECNICO | PROJETO | MANUTENCAO
-  finalidade String
+  finalidade  String
   /// ATIVA | CONSUMIDA | CANCELADA | EXPIRADA
-  status     String @default("ATIVA")
-  observacao String?
-  criadoEm   DateTime @default(now())
-  expiraEm   DateTime?
+  status      String    @default("ATIVA")
+  observacao  String?
+  criadoEm    DateTime  @default(now())
+  expiraEm    DateTime?
   encerradoEm DateTime?
 
   material   Material @relation(fields: [materialId], references: [id])
@@ -502,18 +504,18 @@ model Reserva {
 // ===========================================================================
 
 model Triagem {
-  id         String @id @default(cuid())
-  quantidade Float  @default(1)
+  id             String    @id @default(cuid())
+  quantidade     Float     @default(1)
   /// AGUARDANDO | EM_ANALISE | CONCLUIDA
-  status     String @default("AGUARDANDO")
+  status         String    @default("AGUARDANDO")
   /// APROVADO | MANUTENCAO | DESCARTE  (preenchido ao concluir)
-  resultado  String?
+  resultado      String?
   estadoRecebido String? // estado informado na devolução
-  laudo      String?
-  criadoEm   DateTime  @default(now())
-  concluidoEm DateTime?
+  laudo          String?
+  criadoEm       DateTime  @default(now())
+  concluidoEm    DateTime?
 
-  material   Material @relation(fields: [materialId], references: [id])
+  material   Material       @relation(fields: [materialId], references: [id])
   materialId String
   unidade    UnidadeSerial? @relation(fields: [unidadeId], references: [id])
   unidadeId  String?
@@ -535,11 +537,11 @@ model Triagem {
 // ===========================================================================
 
 model Inventario {
-  id     String @id @default(cuid())
-  numero String @unique
+  id           String    @id @default(cuid())
+  numero       String    @unique
   /// EM_CONTAGEM | EM_CONFERENCIA | CONCLUIDO | CANCELADO
-  status String @default("EM_CONTAGEM")
-  observacao String?
+  status       String    @default("EM_CONTAGEM")
+  observacao   String?
   iniciadoEm   DateTime  @default(now())
   finalizadoEm DateTime?
 
@@ -574,17 +576,17 @@ model InventarioItem {
 // ===========================================================================
 
 model Auditoria {
-  id        String   @id @default(cuid())
-  entidade  String // Material | Entrada | Movimentacao | UnidadeSerial | Inventario | ...
+  id         String   @id @default(cuid())
+  entidade   String // Material | Entrada | Movimentacao | UnidadeSerial | Inventario | ...
   entidadeId String
   /// CRIACAO | EDICAO | EXCLUSAO | RECEBIMENTO | MOVIMENTACAO | DEVOLUCAO |
   /// BAIXA | AJUSTE | TRIAGEM | RESERVA | INVENTARIO
-  acao      String
-  descricao String
+  acao       String
+  descricao  String
   /// snapshots serializados em JSON (SQLite não tem tipo Json)
-  antes     String?
-  depois    String?
-  criadoEm  DateTime @default(now())
+  antes      String?
+  depois     String?
+  criadoEm   DateTime @default(now())
 
   usuario   Usuario @relation(fields: [usuarioId], references: [id])
   usuarioId String
@@ -622,11 +624,11 @@ model OrdemServico {
   codigoCliente String?
   contrato      String?
 
-  endereco  String?
+  endereco   String?
   bairroNome String?
-  cidade    String?
-  latitude  Float?
-  longitude Float?
+  cidade     String?
+  latitude   Float?
+  longitude  Float?
 
   abertaEm     DateTime  @default(now())
   prazo        DateTime?
@@ -692,8 +694,8 @@ model Bairro {
   regiao   Regiao? @relation(fields: [regiaoId], references: [id])
   regiaoId String?
 
-  responsavelPrincipal   Tecnico? @relation("BairroPrincipal", fields: [responsavelPrincipalId], references: [id])
-  responsavelPrincipalId String?
+  responsavelPrincipal    Tecnico? @relation("BairroPrincipal", fields: [responsavelPrincipalId], references: [id])
+  responsavelPrincipalId  String?
   responsavelSecundario   Tecnico? @relation("BairroSecundario", fields: [responsavelSecundarioId], references: [id])
   responsavelSecundarioId String?
 
@@ -713,14 +715,12 @@ model Bairro {
 // ---------------------------------------------------------------------------
 
 model Veiculo {
-  id        String   @id @default(cuid())
-  placa     String   @unique
-  apelido   String?
-  modelo    String?
-  /// identificador do equipamento na plataforma de rastreamento
-  rastreador String? @unique
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now())
+  id       String   @id @default(cuid())
+  placa    String   @unique
+  apelido  String?
+  modelo   String?
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
 
   /// quem está com o veículo agora (denormalizado a partir do vínculo aberto)
   tecnicoAtual   Tecnico? @relation("VeiculoTecnicoAtual", fields: [tecnicoAtualId], references: [id])
@@ -730,17 +730,56 @@ model Veiculo {
   estoque   Estoque? @relation(fields: [estoqueId], references: [id])
   estoqueId String?  @unique
 
-  posicoes PosicaoVeiculo[]
-  vinculos VinculoVeiculo[]
+  /// o aparelho de rastreamento instalado, quando houver
+  rastreador Rastreador?
+  vinculos   VinculoVeiculo[]
 
   @@index([tecnicoAtualId])
 }
 
+/// 3.1 — O APARELHO DE RASTREAMENTO.
+///
+/// Quem reporta posição é o aparelho, não o carro. Modelá-lo à parte é o que
+/// permite rastrear também o celular do técnico e o equipamento caro — dois
+/// casos que a operação já pratica e que um modelo preso a "veículo" não
+/// consegue representar sem mentir.
+model Rastreador {
+  id String @id @default(cuid())
+
+  /// uniqueId na plataforma de rastreamento — a chave da sincronização
+  identificador String  @unique
+  /// nome como aparece na plataforma
+  nome          String
+  /// VEICULO | PESSOA | EQUIPAMENTO | NAO_CLASSIFICADO
+  tipo          String  @default("NAO_CLASSIFICADO")
+  modelo        String?
+  ativo         Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  /// tipo VEICULO — o aparelho instalado no carro
+  veiculo   Veiculo? @relation(fields: [veiculoId], references: [id])
+  veiculoId String?  @unique
+
+  /// tipo PESSOA — o celular do técnico; aqui a posição já é da pessoa
+  tecnico   Tecnico? @relation(fields: [tecnicoId], references: [id])
+  tecnicoId String?  @unique
+
+  /// tipo EQUIPAMENTO — amarra o aparelho ao patrimônio serializado do estoque
+  unidadeSerial   UnidadeSerial? @relation(fields: [unidadeSerialId], references: [id])
+  unidadeSerialId String?        @unique
+
+  posicoes Posicao[]
+
+  @@index([tipo])
+}
+
 /// histórico de quem dirigiu qual veículo — base da auditoria de localização
 model VinculoVeiculo {
-  id     String    @id @default(cuid())
-  inicio DateTime  @default(now())
-  fim    DateTime?
+  id         String    @id @default(cuid())
+  inicio     DateTime  @default(now())
+  fim        DateTime?
   observacao String?
 
   veiculo   Veiculo @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
@@ -755,7 +794,9 @@ model VinculoVeiculo {
   @@index([tecnicoId, inicio])
 }
 
-model PosicaoVeiculo {
+/// A leitura crua do aparelho. Pertence ao rastreador, não ao alvo: se o
+/// aparelho mudar de carro, o histórico continua sendo dele.
+model Posicao {
   id          String   @id @default(cuid())
   latitude    Float
   longitude   Float
@@ -767,21 +808,21 @@ model PosicaoVeiculo {
   capturadoEm DateTime @default(now())
   recebidoEm  DateTime @default(now())
 
-  veiculo   Veiculo @relation(fields: [veiculoId], references: [id], onDelete: Cascade)
-  veiculoId String
+  rastreador   Rastreador @relation(fields: [rastreadorId], references: [id], onDelete: Cascade)
+  rastreadorId String
 
-  @@index([veiculoId, capturadoEm])
+  @@index([rastreadorId, capturadoEm])
   @@index([capturadoEm])
 }
 
 model LocalizacaoTecnico {
-  id          String   @id @default(cuid())
-  latitude    Float
-  longitude   Float
-  precisao    Float?
+  id                String   @id @default(cuid())
+  latitude          Float
+  longitude         Float
+  precisao          Float?
   statusOperacional String?
-  origem      String   @default("NAVEGADOR")
-  capturadoEm DateTime @default(now())
+  origem            String   @default("NAVEGADOR")
+  capturadoEm       DateTime @default(now())
 
   tecnico   Tecnico @relation(fields: [tecnicoId], references: [id])
   tecnicoId String

@@ -402,6 +402,46 @@ export const SITUACAO_SLA = dicionario([
 ] as const as Opcao<string>[]);
 
 // ---------------------------------------------------------------------------
+// BLOCO 3 — Rastreamento
+// ---------------------------------------------------------------------------
+
+/**
+ * 3.1 — O QUE O APARELHO ESTÁ RASTREANDO.
+ *
+ * A conta da operação tem carro, celular de técnico e equipamento caro no mesmo
+ * lugar. Tratar tudo como "veículo" obrigaria a inventar um carro para cada
+ * OTDR — e a posição do celular, que já é a da pessoa, teria de passar por um
+ * vínculo que não existe.
+ *
+ * NAO_CLASSIFICADO é o padrão de propósito: aparelho recém-importado entra sem
+ * palpite do sistema e espera alguém dizer o que ele é.
+ */
+export const TIPO_RASTREADOR = dicionario([
+  { valor: "VEICULO", rotulo: "Veículo", tom: "informativo" },
+  { valor: "PESSOA", rotulo: "Celular de técnico", tom: "roxo" },
+  { valor: "EQUIPAMENTO", rotulo: "Equipamento", tom: "positivo" },
+  { valor: "NAO_CLASSIFICADO", rotulo: "Não classificado", tom: "atencao" },
+] as const as Opcao<string>[]);
+
+/** tipos que produzem posição utilizável para alocar técnico */
+export const RASTREADORES_DE_PESSOA = ["PESSOA", "VEICULO"];
+
+/** 3.8 — quão recente é a última leitura */
+export const FRESCOR_POSICAO = dicionario([
+  { valor: "ATUAL", rotulo: "Atual", tom: "positivo" },
+  { valor: "RECENTE", rotulo: "Recente", tom: "positivo" },
+  { valor: "DESATUALIZADA", rotulo: "Desatualizada", tom: "atencao" },
+  { valor: "SEM_SINAL", rotulo: "Sem sinal", tom: "critico" },
+] as const as Opcao<string>[]);
+
+/** de onde a posição do técnico foi deduzida — importa para confiar nela */
+export const FONTE_POSICAO = dicionario([
+  { valor: "CELULAR", rotulo: "Celular do técnico", tom: "roxo" },
+  { valor: "VEICULO", rotulo: "Veículo", tom: "informativo" },
+  { valor: "SEM_POSICAO", rotulo: "Sem posição", tom: "critico" },
+] as const as Opcao<string>[]);
+
+// ---------------------------------------------------------------------------
 // Acesso e auditoria
 // ---------------------------------------------------------------------------
 

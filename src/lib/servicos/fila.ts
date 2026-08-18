@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { distanciaKm, situacaoDaFrota } from "./frota";
+import { distanciaKm, posicoesDosTecnicos } from "./frota";
 import { situacaoSla } from "./ordens";
 import { calcularScore, parametros, type CandidatoScore } from "./parametros";
 import {
@@ -104,7 +104,10 @@ export async function filaInteligente(
   if (!ordens.length) return [];
 
   // --- contexto compartilhado, buscado uma vez só -------------------------
-  const frota = await situacaoDaFrota();
+  //
+  // A posição vem do celular do técnico quando existe, e do carro dele quando
+  // não — a escolha fica em posicoesDosTecnicos, e aqui só se consome.
+  const posicoes = await posicoesDosTecnicos();
 
   const tecnicos = await prisma.tecnico.findMany({
     where: { ativo: true },
@@ -144,19 +147,7 @@ export async function filaInteligente(
     );
   }
 
-  const posicaoPor = new Map(
-    frota
-      .filter((v) => v.tecnicoId && v.latitude !== null && v.longitude !== null)
-      .map((v) => [
-        v.tecnicoId!,
-        {
-          latitude: v.latitude!,
-          longitude: v.longitude!,
-          placa: v.placa,
-          frescor: v.frescor,
-        },
-      ]),
-  );
+  const posicaoPor = new Map(posicoes.map((p) => [p.tecnicoId, p]));
 
   // --- monta a fila --------------------------------------------------------
   const itens: ItemDaFila[] = [];
@@ -179,7 +170,8 @@ export async function filaInteligente(
     } else {
       for (const tecnico of tecnicos) {
         const posicao = posicaoPor.get(tecnico.id);
-        if (!posicao) continue; // sem rastreador vinculado, não entra no ranking
+        // sem aparelho que revele onde ele está, não dá para ranquear por distância
+        if (!posicao) continue;
 
         const faltando: string[] = [];
         for (const material of materiais) {
@@ -199,7 +191,8 @@ export async function filaInteligente(
             {
               tecnicoId: tecnico.id,
               tecnicoNome: tecnico.nome,
-              placa: posicao.placa,
+              referencia: posicao.referencia,
+              fonte: posicao.fonte,
               distanciaKm: distanciaKm(posicao, {
                 latitude: ordem.latitude!,
                 longitude: ordem.longitude!,
@@ -218,7 +211,7 @@ export async function filaInteligente(
 
       if (!candidatos.length) {
         impedimento =
-          "Nenhum técnico com veículo rastreado e posição conhecida no momento.";
+          "Nenhum técnico com posição conhecida agora — nem por celular, nem por veículo.";
       }
     }
 

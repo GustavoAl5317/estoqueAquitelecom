@@ -77,7 +77,7 @@ export async function POST(requisicao: Request) {
       const posicao = await registrarPosicao({
         veiculoId: item.veiculoId,
         placa: item.placa,
-        rastreador: item.rastreador,
+        identificador: item.rastreador,
         latitude,
         longitude,
         velocidade:

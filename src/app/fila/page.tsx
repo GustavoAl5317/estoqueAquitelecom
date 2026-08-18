@@ -226,7 +226,7 @@ export default async function Fila({
                           </div>
 
                           <p className="text-xs text-[var(--texto-3)]">
-                            {candidato.placa} ·{" "}
+                            {candidato.referencia} ·{" "}
                             {numero(candidato.distanciaKm, 1)} km ·{" "}
                             {candidato.osAbertas} OS
                           </p>

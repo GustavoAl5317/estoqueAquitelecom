@@ -74,7 +74,10 @@ export function somaDosPesos(p: Parametros) {
 export type CandidatoScore = {
   tecnicoId: string;
   tecnicoNome: string;
-  placa: string;
+  /** o que revelou a posição: a placa do carro ou o nome do aparelho */
+  referencia: string;
+  /** CELULAR | VEICULO — quanto confiar na coordenada */
+  fonte: "CELULAR" | "VEICULO";
   distanciaKm: number;
   temMaterial: boolean;
   faltando: string[];
@@ -93,7 +96,8 @@ export function calcularScore(
   candidato: {
     tecnicoId: string;
     tecnicoNome: string;
-    placa: string;
+    referencia: string;
+    fonte: "CELULAR" | "VEICULO";
     distanciaKm: number;
     temMaterial: boolean;
     faltando: string[];
@@ -110,7 +114,10 @@ export function calcularScore(
   const limite = Math.max(p.raioAtuacaoKm * 2, 1);
   const notaDistancia = Math.max(0, 1 - candidato.distanciaKm / limite);
   if (candidato.distanciaKm <= p.raioAtuacaoKm) {
-    motivos.push(`Está a ${numero(candidato.distanciaKm, 1)} km`);
+    motivos.push(
+      `Está a ${numero(candidato.distanciaKm, 1)} km` +
+        (candidato.fonte === "CELULAR" ? " (celular dele)" : " (pelo veículo)"),
+    );
   }
 
   // carga: quem tem menos OS que a média pontua mais
@@ -144,7 +151,8 @@ export function calcularScore(
   return {
     tecnicoId: candidato.tecnicoId,
     tecnicoNome: candidato.tecnicoNome,
-    placa: candidato.placa,
+    referencia: candidato.referencia,
+    fonte: candidato.fonte,
     distanciaKm: candidato.distanciaKm,
     temMaterial: candidato.temMaterial,
     faltando: candidato.faltando,

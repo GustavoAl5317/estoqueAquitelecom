@@ -76,11 +76,13 @@ function mac(i: number) {
 
 /**
  * A ordem importa: cada tabela só pode ser apagada depois de quem aponta para
- * ela. A frota vem cedo porque Veiculo referencia Tecnico e Estoque.
+ * ela. O rastreamento vem primeiro porque Rastreador aponta para Veiculo,
+ * Tecnico e UnidadeSerial ao mesmo tempo.
  */
 async function limpar() {
   const tabelas = [
-    prisma.posicaoVeiculo,
+    prisma.posicao,
+    prisma.rastreador,
     prisma.vinculoVeiculo,
     prisma.veiculo,
     prisma.movimentacaoItemSerial,
@@ -851,16 +853,47 @@ async function main() {
     { lat: -3.7899, lng: -38.4818, ref: "Washington Soares" },
   ];
 
+  /** trilha das últimas horas, terminando na posição atual */
+  async function trilha(
+    rastreadorId: string,
+    base: { lat: number; lng: number; ref: string },
+    passos = 6,
+  ) {
+    for (let passo = passos; passo >= 0; passo--) {
+      await prisma.posicao.create({
+        data: {
+          rastreadorId,
+          latitude: base.lat + (aleatorio() - 0.5) * 0.02 * passo,
+          longitude: base.lng + (aleatorio() - 0.5) * 0.02 * passo,
+          velocidade: passo === 0 ? 0 : inteiro(15, 60),
+          ignicao: passo !== 0,
+          endereco: base.ref,
+          origem: "RASTREADOR",
+          capturadoEm: new Date(Date.now() - passo * 22 * 60_000),
+        },
+      });
+    }
+  }
+
   for (const [i, dados] of veiculosDados.entries()) {
     const veiculo = await prisma.veiculo.create({
       data: {
         placa: dados.placa,
         apelido: dados.apelido,
         modelo: dados.modelo,
-        rastreador: dados.rastreador,
         estoqueId:
           dados.estoque !== undefined ? estoques[dados.estoque].estoque.id : null,
         tecnicoAtualId: tecnicos[i].tecnico.id,
+      },
+    });
+
+    const rastreador = await prisma.rastreador.create({
+      data: {
+        identificador: dados.rastreador,
+        nome: `${dados.apelido} ${dados.placa}`,
+        tipo: "VEICULO",
+        modelo: "GT06N",
+        veiculoId: veiculo.id,
       },
     });
 
@@ -874,22 +907,68 @@ async function main() {
       },
     });
 
-    // trilha das últimas horas, terminando na posição atual
+    await trilha(rastreador.id, rotas[i % rotas.length]);
+  }
+
+  // --- celular de técnico -------------------------------------------------
+  //
+  // A operação real já rastreia alguns técnicos pelo próprio aparelho. É a
+  // fonte mais confiável que existe: quando o técnico desce para atender, o
+  // carro fica parado na rua e o celular vai junto.
+  for (const [i, tec] of tecnicos.slice(0, 3).entries()) {
+    const rastreador = await prisma.rastreador.create({
+      data: {
+        identificador: `CEL-${100 + i}`,
+        nome: `${tec.tecnico.nome.split(" ")[0].toUpperCase()} - celular`,
+        tipo: "PESSOA",
+        modelo: escolher(["Galaxy A35", "Galaxy S22", "Galaxy S23"]),
+        tecnicoId: tec.tecnico.id,
+      },
+    });
+
+    // perto do carro, mas não em cima dele — a pessoa desceu
     const base = rotas[i % rotas.length];
-    for (let passo = 6; passo >= 0; passo--) {
-      await prisma.posicaoVeiculo.create({
-        data: {
-          veiculoId: veiculo.id,
-          latitude: base.lat + (aleatorio() - 0.5) * 0.02 * passo,
-          longitude: base.lng + (aleatorio() - 0.5) * 0.02 * passo,
-          velocidade: passo === 0 ? 0 : inteiro(15, 60),
-          ignicao: passo !== 0,
-          endereco: base.ref,
-          origem: "RASTREADOR",
-          capturadoEm: new Date(Date.now() - passo * 22 * 60_000),
-        },
-      });
-    }
+    await trilha(
+      rastreador.id,
+      {
+        lat: base.lat + 0.004,
+        lng: base.lng - 0.003,
+        ref: `${base.ref} — a pé`,
+      },
+      4,
+    );
+  }
+
+  // --- equipamento caro ---------------------------------------------------
+  //
+  // OTDR e máquina de fusão custam mais que muito carro da frota. Rastreá-los
+  // responde uma pergunta do Bloco 1, não do 3: onde está o patrimônio.
+  const serializados = await prisma.unidadeSerial.findMany({
+    where: { status: { in: ["DISPONIVEL", "EM_POSSE_TECNICO"] } },
+    take: 2,
+  });
+
+  for (const [i, unidade] of serializados.entries()) {
+    const rastreador = await prisma.rastreador.create({
+      data: {
+        identificador: `EQP-${200 + i}`,
+        nome: escolher(["OTDR ORIENTEK T303", "Máquina de fusão ORIENTEK"]),
+        tipo: "EQUIPAMENTO",
+        unidadeSerialId: unidade.id,
+      },
+    });
+    await trilha(rastreador.id, rotas[(i + 2) % rotas.length], 3);
+  }
+
+  // --- o que ninguém classificou ainda ------------------------------------
+  //
+  // Toda conta de rastreamento tem isso: aparelho que ficou, aparelho de
+  // terceiro, aparelho que ninguém lembra. Entram sem palpite do sistema.
+  for (const [i, nome] of ["T-40 VERDE", "telefone 55"].entries()) {
+    const rastreador = await prisma.rastreador.create({
+      data: { identificador: `NC-${300 + i}`, nome, tipo: "NAO_CLASSIFICADO" },
+    });
+    await trilha(rastreador.id, rotas[i % rotas.length], 2);
   }
 
   // 3.55 — pesos do score operacional
@@ -1157,6 +1236,8 @@ async function main() {
     prisma.ordemServico.count(),
     prisma.ordemServico.count({ where: { status: { not: "CONCLUIDA" } } }),
     prisma.bairro.count(),
+    prisma.rastreador.count(),
+    prisma.rastreador.count({ where: { tipo: "NAO_CLASSIFICADO" } }),
   ]);
 
   console.log(`
@@ -1169,6 +1250,7 @@ Base populada:
   ${resumo[5]} registros de triagem
   ${resumo[6]} ordens de serviço (${resumo[7]} em aberto)
   ${resumo[8]} bairros mapeados
+  ${resumo[9]} rastreadores (${resumo[10]} sem classificação)
   ${tecnicos.length} técnicos, ${equipes.length} equipes, ${estoques.length} estoques
 `);
 }

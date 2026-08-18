@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, MapPin, Plus } from "lucide-react";
 import {
+  acaoClassificarRastreador,
   acaoCriarVeiculo,
   acaoRegistrarPosicao,
   acaoSalvarParametros,
   acaoVincularVeiculo,
 } from "@/app/acoes/frota";
+import { TIPO_RASTREADOR } from "@/lib/dominio";
 import type { Parametros } from "@/lib/servicos/parametros";
-import type { SituacaoFrota } from "@/lib/servicos/frota";
+import type { SituacaoRastreador } from "@/lib/servicos/frota";
 import { numero, tempoRelativo } from "@/lib/utils";
 import { Aviso, Botao, Campo, Etiqueta } from "./ui";
 import { BotaoEnviar, FormularioAcao } from "./formulario";
@@ -22,8 +25,253 @@ const FRESCOR = {
   SEM_SINAL: { rotulo: "Sem sinal", tom: "critico" as const },
 };
 
+const CABECALHO =
+  "border-b border-[var(--borda)] bg-[var(--superficie-2)] px-3 py-2 text-left text-[11px] font-semibold tracking-wide uppercase text-[var(--texto-3)]";
+const CELULA = "border-b border-[var(--borda)] px-3 py-2.5";
+
+export type AlvosDisponiveis = {
+  veiculos: { id: string; placa: string; apelido: string | null }[];
+  tecnicos: { id: string; nome: string; equipe: string | null }[];
+  seriais: { id: string; rotulo: string }[];
+};
+
 /**
- * 3.30 — o painel central: quem está em qual veículo agora.
+ * 3.1 — CLASSIFICAÇÃO DOS APARELHOS.
+ *
+ * A sincronização importa o que existe na plataforma e não arrisca palpite: a
+ * conta da operação tem carro, celular de técnico e OTDR misturados, e
+ * classificar por heurística de nome acertaria a maioria e erraria o suficiente
+ * para alguém confiar num dado errado.
+ *
+ * Aqui uma pessoa resolve. São dois campos por linha — o que é, e a que
+ * pertence — e a lista de alvos muda conforme o tipo escolhido.
+ */
+export function PainelRastreadores({
+  rastreadores,
+  alvos,
+}: {
+  rastreadores: SituacaoRastreador[];
+  alvos: AlvosDisponiveis;
+}) {
+  const router = useRouter();
+  const [salvando, setSalvando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [, iniciar] = useTransition();
+
+  // guarda o tipo escolhido antes de existir alvo, para o segundo select aparecer
+  const [rascunho, setRascunho] = useState<Record<string, string>>({});
+
+  function classificar(
+    rastreadorId: string,
+    tipo: string,
+    alvo: { veiculoId?: string; tecnicoId?: string; unidadeSerialId?: string },
+  ) {
+    setSalvando(rastreadorId);
+    setErro(null);
+
+    const dados = new FormData();
+    dados.set("rastreadorId", rastreadorId);
+    dados.set("tipo", tipo);
+    for (const [chave, valor] of Object.entries(alvo)) {
+      if (valor) dados.set(chave, valor);
+    }
+
+    iniciar(async () => {
+      const resultado = await acaoClassificarRastreador({}, dados);
+      setSalvando(null);
+      if (resultado.erro) setErro(resultado.erro);
+      else router.refresh();
+    });
+  }
+
+  if (rastreadores.length === 0) {
+    return (
+      <Aviso tom="atencao" titulo="Nenhum aparelho importado">
+        Rode <code className="font-mono text-xs">npm run traccar -- --importar</code>{" "}
+        para trazer os aparelhos da plataforma de rastreamento.
+      </Aviso>
+    );
+  }
+
+  const pendentes = rastreadores.filter((r) => r.tipo === "NAO_CLASSIFICADO");
+
+  return (
+    <div className="space-y-2">
+      {erro && <Aviso tom="critico">{erro}</Aviso>}
+
+      {pendentes.length > 0 && (
+        <Aviso
+          tom="atencao"
+          titulo={`${pendentes.length} aparelho(s) sem classificação`}
+        >
+          Enquanto ninguém disser o que são, eles reportam posição sem que o
+          sistema saiba de quem é essa posição.
+        </Aviso>
+      )}
+
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
+          <thead>
+            <tr>
+              {["Aparelho", "O que é", "A que pertence", "Posição", "Situação"].map(
+                (titulo) => (
+                  <th key={titulo} className={CABECALHO}>
+                    {titulo}
+                  </th>
+                ),
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rastreadores.map((r) => {
+              const frescor = FRESCOR[r.frescor];
+              const tipo = rascunho[r.id] ?? r.tipo;
+              const ocupado = salvando === r.id;
+
+              return (
+                <tr key={r.id} className="hover:bg-[var(--superficie-2)]">
+                  <td className={CELULA}>
+                    <Link
+                      href={`/rastreador/${r.id}`}
+                      className="text-sm font-medium hover:text-[var(--acento)]"
+                    >
+                      {r.nome}
+                    </Link>
+                    <span className="block font-mono text-[11px] text-[var(--texto-3)]">
+                      {r.identificador}
+                    </span>
+                  </td>
+
+                  <td className={CELULA}>
+                    <select
+                      value={tipo}
+                      disabled={ocupado}
+                      onChange={(evento) => {
+                        const novoTipo = evento.target.value;
+                        setRascunho((atual) => ({ ...atual, [r.id]: novoTipo }));
+                        // sem alvo a definir, salva na hora
+                        if (novoTipo === "NAO_CLASSIFICADO") {
+                          classificar(r.id, novoTipo, {});
+                        }
+                      }}
+                      className="!py-1 text-sm"
+                      aria-label={`Tipo do aparelho ${r.nome}`}
+                    >
+                      {TIPO_RASTREADOR.opcoes.map((opcao) => (
+                        <option key={opcao.valor} value={opcao.valor}>
+                          {opcao.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  <td className={CELULA}>
+                    <div className="flex items-center gap-2">
+                      {tipo === "NAO_CLASSIFICADO" ? (
+                        <span className="text-xs text-[var(--texto-3)]">—</span>
+                      ) : (
+                        <select
+                          value={
+                            tipo === "VEICULO"
+                              ? (r.veiculoId ?? "")
+                              : tipo === "PESSOA"
+                                ? (r.tecnicoId ?? "")
+                                : (r.unidadeSerialId ?? "")
+                          }
+                          disabled={ocupado}
+                          onChange={(evento) =>
+                            classificar(r.id, tipo, {
+                              veiculoId:
+                                tipo === "VEICULO" ? evento.target.value : undefined,
+                              tecnicoId:
+                                tipo === "PESSOA" ? evento.target.value : undefined,
+                              unidadeSerialId:
+                                tipo === "EQUIPAMENTO"
+                                  ? evento.target.value
+                                  : undefined,
+                            })
+                          }
+                          className="!py-1 text-sm"
+                          aria-label={`A que pertence o aparelho ${r.nome}`}
+                        >
+                          <option value="">— escolha —</option>
+                          {tipo === "VEICULO" &&
+                            alvos.veiculos.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.placa}
+                                {v.apelido ? ` · ${v.apelido}` : ""}
+                              </option>
+                            ))}
+                          {tipo === "PESSOA" &&
+                            alvos.tecnicos.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.nome}
+                                {t.equipe ? ` · ${t.equipe}` : ""}
+                              </option>
+                            ))}
+                          {tipo === "EQUIPAMENTO" &&
+                            alvos.seriais.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.rotulo}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                      {ocupado && (
+                        <Loader2 className="size-4 shrink-0 animate-spin text-[var(--texto-3)]" />
+                      )}
+                    </div>
+                  </td>
+
+                  <td className={CELULA}>
+                    {r.latitude !== null ? (
+                      <>
+                        <span className="tabular font-mono text-xs">
+                          {r.latitude.toFixed(5)}, {r.longitude!.toFixed(5)}
+                        </span>
+                        <span className="block text-xs text-[var(--texto-3)]">
+                          {r.endereco ??
+                            (r.velocidade !== null
+                              ? `${numero(r.velocidade)} km/h`
+                              : "—")}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-[var(--texto-3)]">
+                        nenhuma posição recebida
+                      </span>
+                    )}
+                  </td>
+
+                  <td className={CELULA}>
+                    <Etiqueta tom={frescor.tom} ponto>
+                      {frescor.rotulo}
+                    </Etiqueta>
+                    {r.capturadoEm && (
+                      <span className="block text-xs text-[var(--texto-3)]">
+                        {tempoRelativo(r.capturadoEm)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-[var(--texto-3)]">
+        Celular de técnico dispensa vínculo: a posição já é da pessoa. Carro
+        precisa do motorista definido abaixo — senão a coordenada é do veículo e
+        de mais ninguém.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 3.30 — quem está em qual veículo agora.
+ *
  * Trocar o motorista é a operação mais frequente do dia, então ela acontece
  * direto na linha, sem abrir formulário.
  */
@@ -31,7 +279,7 @@ export function PainelFrota({
   frota,
   tecnicos,
 }: {
-  frota: SituacaoFrota[];
+  frota: SituacaoRastreador[];
   tecnicos: { id: string; nome: string; equipe: string | null }[];
 }) {
   const router = useRouter();
@@ -57,9 +305,10 @@ export function PainelFrota({
 
   if (frota.length === 0) {
     return (
-      <Aviso tom="atencao" titulo="Nenhum veículo cadastrado">
-        Cadastre os veículos ao lado. Enquanto não houver o vínculo veículo ↔
-        técnico, a posição do rastreador não vira informação operacional.
+      <Aviso tom="atencao" titulo="Nenhum aparelho classificado como veículo">
+        Classifique um aparelho como <strong>Veículo</strong> na tabela acima, ou
+        cadastre o carro ao lado. Sem o vínculo carro ↔ técnico, a posição do
+        rastreador não vira informação operacional.
       </Aviso>
     );
   }
@@ -69,15 +318,12 @@ export function PainelFrota({
       {erro && <Aviso tom="critico">{erro}</Aviso>}
 
       <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[620px] text-sm">
           <thead>
             <tr>
-              {["Veículo", "Quem está dirigindo", "Posição", "Situação"].map((t) => (
-                <th
-                  key={t}
-                  className="border-b border-[var(--borda)] bg-[var(--superficie-2)] px-3 py-2 text-left text-[11px] font-semibold tracking-wide uppercase text-[var(--texto-3)]"
-                >
-                  {t}
+              {["Veículo", "Quem está dirigindo", "Situação"].map((titulo) => (
+                <th key={titulo} className={CABECALHO}>
+                  {titulo}
                 </th>
               ))}
             </tr>
@@ -87,22 +333,25 @@ export function PainelFrota({
               const frescor = FRESCOR[veiculo.frescor];
               return (
                 <tr key={veiculo.id} className="hover:bg-[var(--superficie-2)]">
-                  <td className="border-b border-[var(--borda)] px-3 py-2.5">
+                  <td className={CELULA}>
                     <span className="font-mono text-xs font-semibold">
-                      {veiculo.placa}
+                      {veiculo.placa ?? "sem placa"}
                     </span>
                     <span className="block text-xs text-[var(--texto-3)]">
-                      {veiculo.apelido ?? veiculo.modelo ?? "—"}
+                      {veiculo.nome}
                     </span>
                   </td>
 
-                  <td className="border-b border-[var(--borda)] px-3 py-2.5">
+                  <td className={CELULA}>
                     <div className="flex items-center gap-2">
                       <select
                         value={veiculo.tecnicoId ?? ""}
-                        disabled={salvando === veiculo.id}
-                        onChange={(e) => trocar(veiculo.id, e.target.value)}
+                        disabled={salvando === veiculo.veiculoId || !veiculo.veiculoId}
+                        onChange={(evento) =>
+                          trocar(veiculo.veiculoId!, evento.target.value)
+                        }
                         className="!py-1 text-sm"
+                        aria-label={`Motorista de ${veiculo.placa ?? veiculo.nome}`}
                       >
                         <option value="">— sem técnico —</option>
                         {tecnicos.map((tecnico) => (
@@ -112,33 +361,13 @@ export function PainelFrota({
                           </option>
                         ))}
                       </select>
-                      {salvando === veiculo.id && (
+                      {salvando === veiculo.veiculoId && (
                         <Loader2 className="size-4 shrink-0 animate-spin text-[var(--texto-3)]" />
                       )}
                     </div>
                   </td>
 
-                  <td className="border-b border-[var(--borda)] px-3 py-2.5">
-                    {veiculo.latitude !== null ? (
-                      <>
-                        <span className="tabular font-mono text-xs">
-                          {veiculo.latitude.toFixed(5)}, {veiculo.longitude!.toFixed(5)}
-                        </span>
-                        <span className="block text-xs text-[var(--texto-3)]">
-                          {veiculo.endereco ??
-                            (veiculo.velocidade !== null
-                              ? `${numero(veiculo.velocidade)} km/h`
-                              : "—")}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-[var(--texto-3)]">
-                        nenhuma posição recebida
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="border-b border-[var(--borda)] px-3 py-2.5">
+                  <td className={CELULA}>
                     <Etiqueta tom={frescor.tom} ponto>
                       {frescor.rotulo}
                     </Etiqueta>
@@ -182,9 +411,9 @@ export function FormularioVeiculo({
         </Campo>
         <Campo
           rotulo="ID no rastreador"
-          dica="Como o veículo é identificado na plataforma de rastreamento."
+          dica="O uniqueId do aparelho. Pode ficar em branco e ser amarrado depois na tabela de aparelhos."
         >
-          <input name="rastreador" placeholder="100001" />
+          <input name="rastreador" placeholder="205047106" />
         </Campo>
         <Campo
           rotulo="Estoque do veículo"
@@ -208,24 +437,24 @@ export function FormularioVeiculo({
   );
 }
 
-/** Lançamento manual, para quando o rastreador estiver mudo. */
+/** Lançamento manual, para quando o aparelho estiver mudo. */
 export function FormularioPosicao({
-  veiculos,
+  rastreadores,
 }: {
-  veiculos: { id: string; placa: string }[];
+  rastreadores: { id: string; rotulo: string }[];
 }) {
-  if (veiculos.length === 0) return null;
+  if (rastreadores.length === 0) return null;
 
   return (
     <FormularioAcao acao={acaoRegistrarPosicao} className="space-y-3">
-      <Campo rotulo="Veículo" obrigatorio>
-        <select name="veiculoId" required defaultValue="">
+      <Campo rotulo="Aparelho" obrigatorio>
+        <select name="rastreadorId" required defaultValue="">
           <option value="" disabled>
             Selecione…
           </option>
-          {veiculos.map((veiculo) => (
-            <option key={veiculo.id} value={veiculo.id}>
-              {veiculo.placa}
+          {rastreadores.map((rastreador) => (
+            <option key={rastreador.id} value={rastreador.id}>
+              {rastreador.rotulo}
             </option>
           ))}
         </select>
@@ -282,10 +511,9 @@ export function FormularioParametros({ atuais }: { atuais: Parametros }) {
                 {campo.rotulo}
               </span>
               <span className="tabular text-xs text-[var(--texto-3)]">
-                {pesos[campo.chave]} ({soma > 0
-                  ? Math.round((pesos[campo.chave] / soma) * 100)
-                  : 0}
-                % do total)
+                {pesos[campo.chave]} (
+                {soma > 0 ? Math.round((pesos[campo.chave] / soma) * 100) : 0}% do
+                total)
               </span>
             </div>
             <input
@@ -294,10 +522,10 @@ export function FormularioParametros({ atuais }: { atuais: Parametros }) {
               min={0}
               max={50}
               value={pesos[campo.chave]}
-              onChange={(e) =>
+              onChange={(evento) =>
                 setPesos((atual) => ({
                   ...atual,
-                  [campo.chave]: Number(e.target.value),
+                  [campo.chave]: Number(evento.target.value),
                 }))
               }
               className="!w-full !border-0 !bg-transparent !p-0"
