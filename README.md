@@ -127,13 +127,17 @@ src/
 ### Rastreamento da frota — Traccar
 
 A plataforma usada pela operação roda **Traccar 6.3**, com API REST
-documentada. Configure no `.env`:
+documentada. A conta não expõe geração de token no painel, então a conexão é
+pelo **mesmo usuário e senha do login no site**:
 
 ```
 TRACCAR_URL="https://rastreamentopopular.com"
 TRACCAR_USUARIO="..."
 TRACCAR_SENHA="..."
 ```
+
+Convém pedir um usuário separado, só de leitura, para o sistema — assim a senha
+pessoal de ninguém fica num arquivo de servidor.
 
 Depois:
 

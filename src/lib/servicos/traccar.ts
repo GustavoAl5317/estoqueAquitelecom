@@ -36,7 +36,7 @@ export function configuracaoTraccar(): Config {
     cabecalhos.Authorization = `Basic ${Buffer.from(`${usuario}:${senha}`).toString("base64")}`;
   } else {
     throw new ErroDeNegocio(
-      "Defina TRACCAR_TOKEN (recomendado) ou TRACCAR_USUARIO e TRACCAR_SENHA no .env.",
+      "Defina TRACCAR_USUARIO e TRACCAR_SENHA no .env (ou TRACCAR_TOKEN, se a conta oferecer).",
     );
   }
 
@@ -52,7 +52,7 @@ async function consultar<T>(caminho: string): Promise<T> {
 
   if (resposta.status === 401) {
     throw new ErroDeNegocio(
-      "Traccar recusou a credencial. Gere um token novo em Configurações → Conta → Token.",
+      "Traccar recusou a credencial. Confira TRACCAR_USUARIO e TRACCAR_SENHA no .env — são os mesmos do login no site.",
     );
   }
   if (!resposta.ok) {
