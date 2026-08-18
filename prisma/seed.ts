@@ -1403,6 +1403,18 @@ async function main() {
     });
   }
 
+  // Marca a base como de demonstração. Sem isto, a tela mostra R$ 106 mil em
+  // estoque com a mesma cara de um número real — e alguém acaba apresentando
+  // isso ao cliente como se fosse. `db:limpar` não recria a marca.
+  await prisma.configuracao.create({
+    data: {
+      chave: "sistema.baseDeDemonstracao",
+      valor: new Date().toISOString(),
+      descricao:
+        "Base populada pelo seed. Nenhum número desta instalação é real.",
+    },
+  });
+
   const resumo = await prisma.$transaction([
     prisma.material.count(),
     prisma.unidadeSerial.count(),

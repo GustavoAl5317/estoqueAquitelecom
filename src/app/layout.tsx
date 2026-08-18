@@ -11,6 +11,7 @@ import { MenuUsuario, SeletorTema } from "@/components/barra-superior";
 import { usuarioOpcional } from "@/lib/sessao";
 import { capacidadesDe, podeAcessar, podeFazer } from "@/lib/permissoes";
 import { alertasDoEstoque } from "@/lib/servicos/alertas";
+import { FaixaDemonstracao } from "@/components/faixa-demonstracao";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -76,6 +77,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <NavegacaoLateral capacidades={capacidadesDe(usuario.papel)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <FaixaDemonstracao />
+
         <header className="sem-impressao sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--borda)] bg-[var(--superficie)]/95 px-4 py-2.5 backdrop-blur">
           <NavegacaoMovel capacidades={capacidadesDe(usuario.papel)} />
           {podeVerAlertas && <BuscaGlobal />}
