@@ -40,9 +40,13 @@ npm run dev
 
 A aplicação abre em `http://localhost:3000`.
 
-> Os dados do seed são **fictícios**, gerados para as telas terem o que mostrar.
-> Antes de entrar em produção, rode `npm run db:reset` para limpar tudo e comece
-> pela carga inicial de inventário.
+> ⚠️ **Os dados do seed são fictícios.** Existem para as telas terem o que
+> mostrar durante a avaliação — nenhum material, técnico ou OS ali corresponde à
+> operação real.
+>
+> Para entrar em produção, use **`npm run db:limpar`**, que apaga tudo e **não**
+> repopula. (`npm run db:reset` limpa e roda o seed de novo — serve para voltar
+> à demonstração, não para começar de verdade.)
 
 ---
 
@@ -54,7 +58,8 @@ A aplicação abre em `http://localhost:3000`.
 | `npm run build` | Build de produção |
 | `npm start` | Roda o build de produção |
 | `npm run db:seed` | Popula a base com ~90 dias de operação fictícia |
-| `npm run db:reset` | Apaga tudo e recria o banco vazio |
+| `npm run db:limpar` | Apaga tudo e deixa o banco **vazio** — é o começo da produção |
+| `npm run db:reset` | Apaga tudo e repopula com o seed fictício |
 | `npm run db:studio` | Abre o Prisma Studio para inspecionar a base |
 | `npm run db:check` | Confere se os saldos batem com o razão de movimentos |
 | `npm run traccar -- --verificar` | Testa a conexão com o rastreamento |
