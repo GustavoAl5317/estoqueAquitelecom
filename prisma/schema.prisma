@@ -39,6 +39,8 @@ model Usuario {
   ultimoAcesso DateTime?
 
   sessoes Sessao[]
+  eventosOS EventoOS[]
+  visoes    VisaoSalva[]
 
   tecnico Tecnico?
 
@@ -664,6 +666,7 @@ model OrdemServico {
   movimentos         Movimento[]
   reservas           Reserva[]
   materiaisPrevistos MaterialPrevistoOS[]
+  eventos            EventoOS[]
 
   @@index([status])
   @@index([severidade])
@@ -743,6 +746,55 @@ model Veiculo {
   vinculos   VinculoVeiculo[]
 
   @@index([tecnicoAtualId])
+}
+
+/// 2.33 — TIMELINE DA ORDEM DE SERVIÇO.
+///
+/// A auditoria registra quem mudou o quê; isto registra o que aconteceu com o
+/// atendimento. São coisas diferentes: a primeira serve para responsabilizar,
+/// a segunda para medir. Sem uma linha por etapa não há como calcular tempo de
+/// atribuição, de deslocamento ou de atendimento (2.41).
+model EventoOS {
+  id String @id @default(cuid())
+
+  /// RECEBIDA | SEVERIDADE | ATRIBUIDA | STATUS | MATERIAL | OBSERVACAO | INCIDENTE
+  tipo      String
+  descricao String
+  /// status resultante, quando o evento é uma transição
+  status    String?
+  ocorreuEm DateTime @default(now())
+
+  ordemServico   OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  ordemServicoId String
+
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+  usuarioId String?
+
+  @@index([ordemServicoId, ocorreuEm])
+  @@index([tipo])
+}
+
+/// 2.19 / 3.29 — VISÃO SALVA.
+///
+/// Um recorte que alguém usa todo dia — "críticas sem técnico", "Messejana
+/// hoje". Guardar a query em vez de obrigar a remontar o filtro é o que
+/// transforma a tela em ferramenta de rotina.
+model VisaoSalva {
+  id       String   @id @default(cuid())
+  nome     String
+  /// a rota a que a visão pertence: /os, /os/quadro, /fila
+  tela     String
+  /// query string já montada, do jeito que a tela lê
+  filtros  String
+  /// visível para todo mundo, não só para quem criou
+  compartilhada Boolean @default(false)
+  criadaEm DateTime @default(now())
+
+  criadaPor   Usuario @relation(fields: [criadaPorId], references: [id], onDelete: Cascade)
+  criadaPorId String
+
+  @@unique([criadaPorId, tela, nome])
+  @@index([tela])
 }
 
 /// 3.66 — SESSÃO AUTENTICADA.

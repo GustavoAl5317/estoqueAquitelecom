@@ -365,6 +365,69 @@ export const SEVERIDADE_OS = dicionario([
   { valor: "BAIXA", rotulo: "Baixa", tom: "neutro" },
 ] as const as Opcao<string>[]);
 
+/**
+ * 2.6 — SUBTIPOS.
+ *
+ * O tipo diz o que é; o subtipo diz o que houve. "Manutenção" não ajuda a
+ * decidir nada — "fibra rompida" e "Wi-Fi" pedem material, tempo e perfil de
+ * técnico diferentes, e é essa distinção que permite ver tendência de verdade.
+ */
+export const SUBTIPOS_POR_TIPO: Record<string, string[]> = {
+  INSTALACAO: ["Ponto novo", "Ponto adicional", "Migração de tecnologia"],
+  REPARO: [
+    "Sem conexão",
+    "Quedas",
+    "Lentidão",
+    "Wi-Fi",
+    "Fibra rompida",
+    "Atenuação",
+    "Equipamento",
+  ],
+  MANUTENCAO: ["Preventiva", "Troca de equipamento", "Reorganização de rede"],
+  MUDANCA_ENDERECO: ["Mesmo bairro", "Outro bairro", "Outra cidade"],
+  RETIRADA: ["Cancelamento", "Inadimplência", "Troca de titularidade"],
+  UPGRADE: ["Aumento de velocidade", "Plano com Wi-Fi", "Ponto adicional"],
+  VISTORIA: ["Viabilidade", "Pós-instalação", "Reclamação recorrente"],
+  INFRAESTRUTURA: ["Rompimento", "Expansão", "Manutenção de caixa"],
+  NAO_INFORMADO: [],
+};
+
+export const TODOS_SUBTIPOS = [
+  ...new Set(Object.values(SUBTIPOS_POR_TIPO).flat()),
+].sort();
+
+/**
+ * 2.8 — MATRIZ DE SEVERIDADE.
+ *
+ * O padrão de fábrica; o supervisor sobrescreve em Configuração. Não é o tipo
+ * que define sozinho a severidade — é o ponto de partida dela.
+ */
+export const SEVERIDADE_PADRAO_POR_TIPO: Record<string, string> = {
+  INSTALACAO: "MEDIA",
+  REPARO: "ALTA",
+  MANUTENCAO: "MEDIA",
+  MUDANCA_ENDERECO: "MEDIA",
+  RETIRADA: "BAIXA",
+  UPGRADE: "BAIXA",
+  VISTORIA: "BAIXA",
+  INFRAESTRUTURA: "CRITICA",
+  NAO_INFORMADO: "MEDIA",
+};
+
+/** ordem crescente de gravidade — usada para elevar sem nunca rebaixar */
+export const ESCALA_SEVERIDADE = ["BAIXA", "MEDIA", "ALTA", "CRITICA"];
+
+/** 2.33 — o que aconteceu com o atendimento, além de quem mexeu */
+export const TIPO_EVENTO_OS = dicionario([
+  { valor: "RECEBIDA", rotulo: "Recebida", tom: "neutro" },
+  { valor: "SEVERIDADE", rotulo: "Severidade alterada", tom: "atencao" },
+  { valor: "ATRIBUIDA", rotulo: "Responsável definido", tom: "informativo" },
+  { valor: "STATUS", rotulo: "Mudança de situação", tom: "roxo" },
+  { valor: "MATERIAL", rotulo: "Material aplicado", tom: "positivo" },
+  { valor: "INCIDENTE", rotulo: "Relacionada a incidente", tom: "critico" },
+  { valor: "OBSERVACAO", rotulo: "Observação", tom: "neutro" },
+] as const as Opcao<string>[]);
+
 export const ORIGEM_OS = dicionario([
   { valor: "SGP", rotulo: "SGP", tom: "informativo" },
   { valor: "LANCAMENTO_MANUAL", rotulo: "Lançamento manual", tom: "neutro" },
