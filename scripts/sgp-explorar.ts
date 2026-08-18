@@ -44,6 +44,8 @@ function parametros() {
 const rota = opcao("path");
 const metodo = (opcao("metodo", "POST") ?? "POST").toUpperCase();
 const arquivoSaida = opcao("saida", "sgp-amostra.json")!;
+/** envia o corpo como formulário em vez de JSON */
+const formulario = argv.includes("--form");
 
 if (!rota) {
   console.error(`
@@ -115,6 +117,21 @@ async function consultar() {
       url.searchParams.set(chave, valor);
     }
     resposta = await fetch(url, { headers: { Accept: "application/json" } });
+  } else if (formulario) {
+    /*
+     * O SGP documenta form-data. Alguns endpoints aceitam JSON e outros não —
+     * e o que não aceita costuma responder 200 com lista vazia em vez de erro,
+     * porque simplesmente não enxerga os campos enviados. Um corpo mudo parece
+     * "sem resultado", o que manda a investigação para o lado errado.
+     */
+    resposta = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: new URLSearchParams(corpo).toString(),
+    });
   } else {
     resposta = await fetch(url, {
       method: "POST",
