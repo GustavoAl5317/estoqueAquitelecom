@@ -29,6 +29,23 @@ const CABECALHO =
   "border-b border-[var(--borda)] bg-[var(--superficie-2)] px-3 py-2 text-left text-[11px] font-semibold tracking-wide uppercase text-[var(--texto-3)]";
 const CELULA = "border-b border-[var(--borda)] px-3 py-2.5";
 
+/**
+ * Quando não há alvo cadastrado, a tela diz o que criar em vez de mostrar um
+ * seletor vazio. Um campo sem opção não comunica nada — parece defeito.
+ */
+const FALTA_CADASTRAR: Record<string, string> = {
+  VEICULO: "cadastre um veículo ao lado",
+  PESSOA: "cadastre o técnico em Locais e detentores",
+  EQUIPAMENTO: "cadastre o equipamento como material serializado",
+};
+
+function opcoesDoTipo(tipo: string, alvos: AlvosDisponiveis) {
+  if (tipo === "VEICULO") return alvos.veiculos;
+  if (tipo === "PESSOA") return alvos.tecnicos;
+  if (tipo === "EQUIPAMENTO") return alvos.seriais;
+  return [];
+}
+
 export type AlvosDisponiveis = {
   veiculos: { id: string; placa: string; apelido: string | null }[];
   tecnicos: { id: string; nome: string; equipe: string | null }[];
@@ -94,6 +111,10 @@ export function PainelRastreadores({
   }
 
   const pendentes = rastreadores.filter((r) => r.tipo === "NAO_CLASSIFICADO");
+  // classificados, mas sem saber a que pertencem — não entram na alocação
+  const semVinculo = rastreadores.filter(
+    (r) => r.tipo !== "NAO_CLASSIFICADO" && !r.alvo,
+  );
 
   return (
     <div className="space-y-2">
@@ -106,6 +127,16 @@ export function PainelRastreadores({
         >
           Enquanto ninguém disser o que são, eles reportam posição sem que o
           sistema saiba de quem é essa posição.
+        </Aviso>
+      )}
+
+      {semVinculo.length > 0 && (
+        <Aviso
+          tom="informativo"
+          titulo={`${semVinculo.length} aparelho(s) classificado(s), mas sem vínculo`}
+        >
+          O tipo já está salvo. Falta dizer a que cada um pertence — e isso
+          exige que o veículo, o técnico ou o equipamento existam no cadastro.
         </Aviso>
       )}
 
@@ -149,10 +180,9 @@ export function PainelRastreadores({
                       onChange={(evento) => {
                         const novoTipo = evento.target.value;
                         setRascunho((atual) => ({ ...atual, [r.id]: novoTipo }));
-                        // sem alvo a definir, salva na hora
-                        if (novoTipo === "NAO_CLASSIFICADO") {
-                          classificar(r.id, novoTipo, {});
-                        }
+                        // o tipo é um fato por si só: salva na hora, e o
+                        // vínculo vira um segundo passo
+                        classificar(r.id, novoTipo, {});
                       }}
                       className="!py-1 text-sm"
                       aria-label={`Tipo do aparelho ${r.nome}`}
@@ -169,6 +199,10 @@ export function PainelRastreadores({
                     <div className="flex items-center gap-2">
                       {tipo === "NAO_CLASSIFICADO" ? (
                         <span className="text-xs text-[var(--texto-3)]">—</span>
+                      ) : opcoesDoTipo(tipo, alvos).length === 0 ? (
+                        <span className="text-xs text-[var(--atencao)]">
+                          {FALTA_CADASTRAR[tipo]}
+                        </span>
                       ) : (
                         <select
                           value={

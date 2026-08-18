@@ -134,11 +134,18 @@ export async function vincularRastreador(
       dados.tipo === "EQUIPAMENTO" ? dados.unidadeSerialId || null : null,
   };
 
-  if (dados.tipo !== "NAO_CLASSIFICADO" && !Object.values(alvo).some(Boolean)) {
-    throw new ErroDeNegocio(
-      `Escolha a que ${TIPO_RASTREADOR.rotulo(dados.tipo).toLowerCase()} este aparelho pertence.`,
-    );
-  }
+  /*
+   * O tipo salva sozinho, sem alvo.
+   *
+   * Saber que um aparelho é o celular de um técnico é um fato independente de
+   * saber de qual técnico — e quase sempre se descobre antes. Exigir os dois
+   * juntos travava a classificação numa base recém-criada, onde ainda não
+   * existem veículos nem técnicos cadastrados: não havia o que escolher, e por
+   * isso não havia como salvar.
+   *
+   * O vínculo continua sendo obrigatório para a posição virar decisão — quem
+   * cobra isso é a tela, mostrando o aparelho como incompleto.
+   */
 
   // o alvo é exclusivo dos dois lados: libera quem já ocupava o lugar
   for (const [campo, valor] of Object.entries(alvo)) {
@@ -159,7 +166,7 @@ export async function vincularRastreador(
     atualizado.veiculo?.placa ??
     atualizado.tecnico?.nome ??
     atualizado.unidadeSerial?.serial ??
-    "nada";
+    "ainda sem vínculo";
 
   await auditar(prisma, {
     entidade: "Rastreador",
