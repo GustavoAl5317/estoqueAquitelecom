@@ -202,7 +202,7 @@ export default async function Regioes() {
                                 : "critico"
                           }
                         >
-                          {percentual(linha.aderenciaSla / 100)}
+                          {percentual(linha.aderenciaSla)}
                         </Etiqueta>
                       )}
                     </Td>

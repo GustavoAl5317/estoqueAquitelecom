@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { distanciaKm, posicoesDosTecnicos } from "./frota";
-import { temposMedios } from "./eventos";
+import { atendimentoTipicoPorTipo } from "./eventos";
 import { situacaoSla } from "./ordens";
-import { STATUS_OS_ABERTOS } from "@/lib/dominio";
+import { STATUS_OS_ABERTOS, TIPO_OS } from "@/lib/dominio";
 
 /**
  * 3.56 — PREVISÃO DE ATRASO.
@@ -30,6 +30,22 @@ const VELOCIDADE_URBANA_KMH = 18;
 
 /** quando não há histórico do tipo, é isto que se supõe de atendimento */
 const MINUTOS_ATENDIMENTO_PADRAO = 60;
+
+/**
+ * Limites do que se aceita como duração de um atendimento.
+ *
+ * Mesmo com mediana, uma base pequena pode devolver número sem sentido — e
+ * dizer que uma instalação leva doze horas destrói a confiança na tela inteira.
+ * Fora da faixa, a previsão prefere errar para o meio.
+ */
+const MINUTOS_ATENDIMENTO_MINIMO = 15;
+const MINUTOS_ATENDIMENTO_MAXIMO = 240;
+
+const dentroDoRazoavel = (minutos: number) =>
+  Math.min(
+    MINUTOS_ATENDIMENTO_MAXIMO,
+    Math.max(MINUTOS_ATENDIMENTO_MINIMO, Math.round(minutos)),
+  );
 
 /** abaixo disto o prazo é considerado apertado, ainda que caiba */
 const MINUTOS_FOLGA_CONFORTAVEL = 30;
@@ -70,7 +86,7 @@ const PESO_RISCO: Record<RiscoPrevisto, number> = {
 };
 
 export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
-  const [ordens, posicoes, tempos] = await Promise.all([
+  const [ordens, posicoes, tipico] = await Promise.all([
     prisma.ordemServico.findMany({
       where: { status: { in: STATUS_OS_ABERTOS } },
       include: {
@@ -79,21 +95,19 @@ export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
       },
     }),
     posicoesDosTecnicos(),
-    temposMedios(30),
+    atendimentoTipicoPorTipo(30),
   ]);
 
   const posicaoPor = new Map(posicoes.map((p) => [p.tecnicoId, p]));
-  const atendimentoPor = new Map(
-    tempos.porTipo.map((t) => [t.tipo, t.emAtendimento]),
-  );
 
   const agora = new Date();
 
   const previsoes = ordens.map((ordem): PrevisaoDeAtraso => {
-    const minutosAtendimento =
-      atendimentoPor.get(ordem.tipo) ??
-      tempos.emAtendimento ??
-      MINUTOS_ATENDIMENTO_PADRAO;
+    const minutosAtendimento = dentroDoRazoavel(
+      tipico.porTipo.get(ordem.tipo) ??
+        tipico.global ??
+        MINUTOS_ATENDIMENTO_PADRAO,
+    );
 
     const posicao = ordem.tecnicoId ? posicaoPor.get(ordem.tecnicoId) : undefined;
 
@@ -161,7 +175,7 @@ export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
           ? `${ordem.tecnico.nome} está sem posição conhecida agora.`
           : jaNoLocal
             ? `No local há ${Math.round(decorridoNoLocal)} min; restam cerca de ${restanteAtendimento} min de atendimento.`
-            : `${numeroCurto(km!)} km até o cliente (~${minutosDeslocamento} min) mais ~${restanteAtendimento} min de ${ordem.tipo.toLowerCase()}.`;
+            : `${numeroCurto(km!)} km até o cliente (~${minutosDeslocamento} min) mais ~${restanteAtendimento} min de ${TIPO_OS.rotulo(ordem.tipo).toLowerCase()}.`;
 
     return {
       ordemId: ordem.id,

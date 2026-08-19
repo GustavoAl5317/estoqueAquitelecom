@@ -134,6 +134,67 @@ export async function temposMedios(dias = 30) {
   };
 }
 
+/**
+ * 3.56 — QUANTO COSTUMA DURAR UM ATENDIMENTO DESTE TIPO.
+ *
+ * Serve de base para prever atraso, e por isso usa **mediana**, não média: uma
+ * OS que ficou aberta a noite inteira porque ninguém a fechou joga a média
+ * para doze horas e transformaria a previsão em ficção. A mediana ignora esse
+ * caso sem precisar de regra especial.
+ *
+ * A preferência é pelo tempo medido no local (3.36), que é presença de fato.
+ * Onde não houver, cai para o intervalo entre iniciar e concluir o
+ * atendimento, que é o que a operação registrava antes da cerca existir.
+ */
+export async function atendimentoTipicoPorTipo(dias = 30) {
+  const desde = new Date(Date.now() - dias * 86_400_000);
+
+  const ordens = await prisma.ordemServico.findMany({
+    where: { concluidaEm: { gte: desde } },
+    select: {
+      tipo: true,
+      minutosNoLocal: true,
+      abertaEm: true,
+      concluidaEm: true,
+      eventos: {
+        select: { tipo: true, status: true, ocorreuEm: true },
+        orderBy: { ocorreuEm: "asc" },
+      },
+    },
+  });
+
+  const porTipo = new Map<string, number[]>();
+  const todos: number[] = [];
+
+  for (const ordem of ordens) {
+    const medido =
+      ordem.minutosNoLocal ?? temposDaOrdem(ordem, ordem.eventos).emAtendimento;
+    if (medido === null || medido <= 0) continue;
+
+    const lista = porTipo.get(ordem.tipo) ?? [];
+    lista.push(medido);
+    porTipo.set(ordem.tipo, lista);
+    todos.push(medido);
+  }
+
+  return {
+    amostras: todos.length,
+    global: mediana(todos),
+    porTipo: new Map(
+      [...porTipo.entries()].map(([tipo, valores]) => [tipo, mediana(valores)!]),
+    ),
+  };
+}
+
+function mediana(valores: number[]) {
+  if (!valores.length) return null;
+  const ordenados = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(ordenados.length / 2);
+  return ordenados.length % 2
+    ? ordenados[meio]
+    : Math.round((ordenados[meio - 1] + ordenados[meio]) / 2);
+}
+
 /** "1h 20min" — o formato que cabe numa célula de tabela */
 export function minutosLegiveis(minutos: number | null) {
   if (minutos === null) return "—";

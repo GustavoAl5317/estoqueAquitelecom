@@ -129,7 +129,7 @@ export default async function OrdensDeServico({
           valor={
             indicadores.aderenciaSla === null
               ? "—"
-              : percentual(indicadores.aderenciaSla / 100)
+              : percentual(indicadores.aderenciaSla)
           }
           tom={
             indicadores.aderenciaSla === null
