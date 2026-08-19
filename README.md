@@ -9,6 +9,10 @@ Aplicação web única, responsiva, sem aplicativo mobile separado.
 
 ---
 
+> **Chegou agora no projeto?** Leia [CONTEXTO.md](CONTEXTO.md) primeiro — ele
+> tem as decisões do cliente, as armadilhas da integração com o SGP, o estado da
+> VM e o que ainda falta do escopo.
+
 ## Instalação
 
 Requer Node.js 20 ou superior.
