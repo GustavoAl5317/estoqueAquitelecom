@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { coberturaPorRegiao, listarRegioes } from "@/lib/servicos/regioes";
-import { numero } from "@/lib/utils";
+import {
+  coberturaPorRegiao,
+  lerPoligono,
+  listarRegioes,
+  performancePorRegiao,
+  sugestoesDeRebalanceamento,
+} from "@/lib/servicos/regioes";
+import { minutosLegiveis } from "@/lib/servicos/eventos";
+import { numero, percentual } from "@/lib/utils";
 import {
   Aviso,
   CabecalhoPagina,
@@ -19,6 +26,7 @@ import {
   FormularioBairro,
   FormularioRegiao,
 } from "@/components/formularios-regiao";
+import { EditorDePoligono } from "@/components/editor-poligono";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +38,18 @@ export const dynamic = "force-dynamic";
  * o lugar.
  */
 export default async function Regioes() {
-  const [{ regioes, semRegiao }, cobertura, tecnicos, equipes] =
-    await Promise.all([
+  const [
+    { regioes, semRegiao },
+    cobertura,
+    performance,
+    sugestoes,
+    tecnicos,
+    equipes,
+  ] = await Promise.all([
       listarRegioes(),
       coberturaPorRegiao(),
+      performancePorRegiao(),
+      sugestoesDeRebalanceamento(),
       prisma.tecnico.findMany({
         where: { ativo: true },
         select: { id: true, nome: true },
@@ -136,6 +152,110 @@ export default async function Regioes() {
                   )}
                 </tbody>
               </Tabela>
+            </Cartao>
+          )}
+
+          {/* 3.43 / 3.44 / 3.45 */}
+          <Cartao
+            titulo="Performance por região"
+            descricao={`Últimos ${performance.dias} dias. Aderência é sobre as OS com prazo cadastrado; tempo no local vem da chegada detectada.`}
+            semPadding
+          >
+            <Tabela>
+              <thead>
+                <tr>
+                  <Th>Região</Th>
+                  <Th numerico>Abertas</Th>
+                  <Th numerico>Em risco</Th>
+                  <Th numerico>Concluídas</Th>
+                  <Th numerico>Aderência</Th>
+                  <Th numerico>Ciclo médio</Th>
+                  <Th numerico>No local</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ...performance.linhas,
+                  ...(performance.semRegiao ? [performance.semRegiao] : []),
+                ].map((linha) => (
+                  <Linha key={linha.nome}>
+                    <Td className="text-sm font-medium">{linha.nome}</Td>
+                    <Td numerico>{numero(linha.abertas)}</Td>
+                    <Td numerico>
+                      {linha.emRisco > 0 ? (
+                        <Etiqueta tom="critico">{linha.emRisco}</Etiqueta>
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
+                    <Td numerico>{numero(linha.concluidas)}</Td>
+                    <Td numerico>
+                      {linha.aderenciaSla === null ? (
+                        "—"
+                      ) : (
+                        <Etiqueta
+                          tom={
+                            linha.aderenciaSla >= 90
+                              ? "positivo"
+                              : linha.aderenciaSla >= 70
+                                ? "atencao"
+                                : "critico"
+                          }
+                        >
+                          {percentual(linha.aderenciaSla / 100)}
+                        </Etiqueta>
+                      )}
+                    </Td>
+                    <Td numerico>
+                      {linha.horasMedias === null
+                        ? "—"
+                        : `${numero(linha.horasMedias, 1)} h`}
+                    </Td>
+                    <Td numerico>{minutosLegiveis(linha.minutosNoLocal)}</Td>
+                  </Linha>
+                ))}
+              </tbody>
+            </Tabela>
+          </Cartao>
+
+          {/* 3.17 */}
+          <Cartao
+            titulo="Contorno dos bairros"
+            descricao="Desenhado à mão sobre o mapa. É o que faz uma OS importada do SGP — que chega com coordenada e sem bairro — cair sozinha na área certa."
+          >
+            <EditorDePoligono
+              bairros={todosBairros.map((bairro) => ({
+                id: bairro.id,
+                nome: bairro.nome,
+                cidade: bairro.cidade,
+                vertices: lerPoligono(bairro.poligono),
+              }))}
+            />
+          </Cartao>
+
+          {/* 3.46 / 3.57 */}
+          {sugestoes.length > 0 && (
+            <Cartao
+              titulo="Rebalanceamento sugerido"
+              descricao="Nada é redistribuído sozinho: cada linha aponta o desequilíbrio e leva à tela onde a decisão é tomada."
+            >
+              <div className="space-y-2">
+                {sugestoes.map((sugestao, indice) => (
+                  <Aviso
+                    key={`${sugestao.tipo}-${indice}`}
+                    tom={sugestao.tom}
+                    titulo={sugestao.titulo}
+                  >
+                    {sugestao.detalhe}{" "}
+                    <Link
+                      href={sugestao.href}
+                      className="font-medium underline underline-offset-2"
+                    >
+                      resolver
+                    </Link>
+                  </Aviso>
+                ))}
+              </div>
             </Cartao>
           )}
 

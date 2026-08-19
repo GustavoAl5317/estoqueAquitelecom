@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { registrarPosicao } from "@/lib/servicos/frota";
+import { avaliarGeofenceDoRastreador } from "@/lib/servicos/geofence";
 import { ErroDeNegocio } from "@/lib/servicos/nucleo";
 
 /**
@@ -87,6 +88,14 @@ export async function POST(requisicao: Request) {
         capturadoEm: item.capturadoEm ? new Date(item.capturadoEm) : undefined,
       });
       aceitas.push(posicao.id);
+
+      // 3.35 — chegada no cliente detectada pela posição que acabou de entrar
+      await avaliarGeofenceDoRastreador({
+        rastreadorId: posicao.rastreadorId,
+        latitude: posicao.latitude,
+        longitude: posicao.longitude,
+        capturadoEm: posicao.capturadoEm,
+      });
     } catch (erro) {
       recusadas.push({
         item: indice,

@@ -21,11 +21,13 @@ export async function acaoRegistrarLocalizacao(
   }
 
   try {
+    // a mesma leitura que posiciona o técnico é a que detecta a chegada (3.35)
     await registrarLocalizacaoTecnico({
       tecnicoId: usuario.tecnicoId,
       latitude,
       longitude,
       precisao,
+      usuarioId: usuario.id,
     });
   } catch (erro) {
     if (erro instanceof ErroDeNegocio) return { erro: erro.message };

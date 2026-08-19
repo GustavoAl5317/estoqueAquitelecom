@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auditar, ErroDeNegocio, type Tx } from "./nucleo";
 import { registrarEvento } from "./eventos";
+import { fecharPermanencia } from "./geofence";
 import {
   COLUNAS_QUADRO,
   STATUS_OS,
@@ -548,6 +549,11 @@ export async function moverOrdem(
     },
   });
 
+  // 3.36 — encerrada a OS, a permanência no local também se encerra
+  if (STATUS_OS_ENCERRADOS.includes(dados.status)) {
+    await fecharPermanencia(ordem.id, atualizada.concluidaEm ?? new Date());
+  }
+
   // 3.11 — o status do técnico acompanha o da OS enquanto ele está nela
   const espelho: Record<string, string> = {
     EM_DESLOCAMENTO: "EM_DESLOCAMENTO",
@@ -596,13 +602,7 @@ export async function moverOrdem(
  * trabalho ativo espremida à esquerda. O total continua visível no cabeçalho —
  * o que some é o cartão, não o número.
  */
-export async function quadroDeOrdens(
-  filtro: FiltroOrdens = {},
-  horasConcluidas = 24,
-) {
-  const ordens = await listarOrdens({ ...filtro, limite: 400 });
-  const corte = new Date(Date.now() - horasConcluidas * 3_600_000);
-
+function montarColunas(ordens: OrdemDaLista[], corte: Date) {
   return COLUNAS_QUADRO.map((status) => {
     const daColuna = ordens.filter((o) => o.status === status);
 
@@ -622,6 +622,117 @@ export async function quadroDeOrdens(
       ).length,
       cartoes,
     };
+  });
+}
+
+export async function quadroDeOrdens(
+  filtro: FiltroOrdens = {},
+  horasConcluidas = 24,
+) {
+  const ordens = await listarOrdens({ ...filtro, limite: 400 });
+  return montarColunas(ordens, new Date(Date.now() - horasConcluidas * 3_600_000));
+}
+
+export const RECORTES_QUADRO = ["STATUS", "TECNICO", "EQUIPE", "BAIRRO"] as const;
+export type RecorteQuadro = (typeof RECORTES_QUADRO)[number];
+
+export type FaixaDoQuadro = {
+  /** id do técnico, da equipe ou do bairro; vazio na faixa dos sem vínculo */
+  chave: string;
+  rotulo: string;
+  detalhe: string | null;
+  total: number;
+  emRisco: number;
+  colunas: ReturnType<typeof montarColunas>;
+};
+
+/**
+ * 3.25 / 3.26 / 3.27 — O QUADRO CORTADO POR RESPONSÁVEL, EQUIPE OU BAIRRO.
+ *
+ * Um quadro só, com filtro, responde "como está a operação". Ele não responde
+ * "quem está afogado" — para isso é preciso ver as pessoas lado a lado, cada
+ * uma com o próprio fluxo. O recorte não muda o que existe: é a mesma consulta,
+ * cortada em faixas.
+ *
+ * Quem não tem responsável, equipe ou bairro cai numa faixa própria, sempre a
+ * última. Esconder essas OS seria esconder justamente as que precisam de
+ * decisão.
+ */
+export async function quadroPorRecorte(
+  filtro: FiltroOrdens = {},
+  recorte: RecorteQuadro = "STATUS",
+  horasConcluidas = 24,
+): Promise<FaixaDoQuadro[]> {
+  const ordens = await listarOrdens({ ...filtro, limite: 400 });
+  const corte = new Date(Date.now() - horasConcluidas * 3_600_000);
+
+  const faixaInteira = (): FaixaDoQuadro => {
+    const colunas = montarColunas(ordens, corte);
+    return {
+      chave: "",
+      rotulo: "Todas as ordens",
+      detalhe: null,
+      total: ordens.length,
+      emRisco: colunas.reduce((s, c) => s + c.emRisco, 0),
+      colunas,
+    };
+  };
+
+  if (recorte === "STATUS") return [faixaInteira()];
+
+  const identificar = (ordem: OrdemDaLista) => {
+    if (recorte === "TECNICO") {
+      return {
+        chave: ordem.tecnicoId ?? "",
+        rotulo: ordem.tecnico?.nome ?? "Sem responsável",
+        detalhe: ordem.equipe?.nome ?? null,
+      };
+    }
+    if (recorte === "EQUIPE") {
+      return {
+        chave: ordem.equipeId ?? "",
+        rotulo: ordem.equipe?.nome ?? "Sem equipe",
+        detalhe: null,
+      };
+    }
+    // o bairro pode vir do cadastro ou só como nome copiado do SGP
+    const nome = ordem.bairro?.nome ?? ordem.bairroNome;
+    return {
+      chave: ordem.bairroId ?? (nome ? `nome:${nome}` : ""),
+      rotulo: nome ?? "Sem bairro",
+      detalhe: ordem.bairro?.cidade ?? ordem.cidade,
+    };
+  };
+
+  const grupos = new Map<
+    string,
+    { rotulo: string; detalhe: string | null; ordens: OrdemDaLista[] }
+  >();
+
+  for (const ordem of ordens) {
+    const { chave, rotulo, detalhe } = identificar(ordem);
+    const grupo = grupos.get(chave) ?? { rotulo, detalhe, ordens: [] };
+    grupo.ordens.push(ordem);
+    grupos.set(chave, grupo);
+  }
+
+  const faixas = [...grupos.entries()].map(([chave, grupo]) => {
+    const colunas = montarColunas(grupo.ordens, corte);
+    return {
+      chave,
+      rotulo: grupo.rotulo,
+      detalhe: grupo.detalhe,
+      total: grupo.ordens.length,
+      emRisco: colunas.reduce((s, c) => s + c.emRisco, 0),
+      colunas,
+    };
+  });
+
+  // sem vínculo por último: é fila de decisão, não de acompanhamento
+  return faixas.sort((a, b) => {
+    if (!a.chave) return 1;
+    if (!b.chave) return -1;
+    return a.rotulo.localeCompare(b.rotulo);
   });
 }
 

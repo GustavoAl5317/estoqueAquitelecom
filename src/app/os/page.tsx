@@ -14,7 +14,10 @@ import {
   listarOrdens,
   prazoLegivel,
 } from "@/lib/servicos/ordens";
-import { data, numero, percentual } from "@/lib/utils";
+import { visoesParaTela } from "@/lib/servicos/visoes";
+import { usuarioAtual } from "@/lib/sessao";
+import { data, numero, percentual, queryDeFiltros } from "@/lib/utils";
+import { VisoesSalvas } from "@/components/visoes-salvas";
 import {
   BotaoLink,
   CabecalhoPagina,
@@ -50,7 +53,9 @@ export default async function OrdensDeServico({
 }) {
   const filtros = await searchParams;
 
-  const [ordens, indicadores, carga, tecnicos] = await Promise.all([
+  const usuario = await usuarioAtual();
+
+  const [ordens, indicadores, carga, tecnicos, visoes] = await Promise.all([
     listarOrdens({
       status: filtros.status ? [filtros.status] : undefined,
       tecnicoId: filtros.tecnicoId,
@@ -66,6 +71,7 @@ export default async function OrdensDeServico({
       select: { id: true, nome: true },
       orderBy: { nome: "asc" },
     }),
+    visoesParaTela("/os", usuario.id),
   ]);
 
   const temFiltro = Boolean(
@@ -187,6 +193,14 @@ export default async function OrdensDeServico({
             )}
           </div>
         </form>
+
+        <div className="mt-3 border-t border-[var(--borda)] pt-3">
+          <VisoesSalvas
+            tela="/os"
+            filtrosAtuais={queryDeFiltros(filtros)}
+            visoes={visoes}
+          />
+        </div>
       </Cartao>
 
       <div className="grid gap-4 xl:grid-cols-4">

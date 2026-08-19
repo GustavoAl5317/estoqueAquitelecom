@@ -135,6 +135,8 @@ export async function acaoSalvarParametros(
         minutosPosicaoAtual: numero("minutosPosicaoAtual"),
         raioAtuacaoKm: numero("raioAtuacaoKm"),
         minutosParadaSuspeita: numero("minutosParadaSuspeita"),
+        raioChegadaMetros: numero("raioChegadaMetros"),
+        moverAoChegar: numero("moverAoChegar"),
       }),
     ["/central", "/configuracoes"],
   );

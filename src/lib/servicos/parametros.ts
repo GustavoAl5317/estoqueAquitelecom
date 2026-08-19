@@ -20,6 +20,14 @@ export type Parametros = {
   raioAtuacaoKm: number;
   /** minutos parado com ignição desligada que levantam sinal (3.33) */
   minutosParadaSuspeita: number;
+  /** 3.34 — raio em torno do endereço da OS que conta como "chegou" */
+  raioChegadaMetros: number;
+  /**
+   * 3.35 — 1 move a OS para "em atendimento" ao detectar a chegada; 0 apenas
+   * registra o fato. Começa em 0 de propósito: o sistema observa antes de
+   * decidir pela pessoa.
+   */
+  moverAoChegar: number;
 };
 
 export const PARAMETROS_PADRAO: Parametros = {
@@ -31,6 +39,8 @@ export const PARAMETROS_PADRAO: Parametros = {
   minutosPosicaoAtual: 5,
   raioAtuacaoKm: 8,
   minutosParadaSuspeita: 40,
+  raioChegadaMetros: 150,
+  moverAoChegar: 0,
 };
 
 const PREFIXO = "operacao.";

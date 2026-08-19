@@ -87,6 +87,7 @@ const ROTAS: { prefixo: string; capacidade: Capacidade }[] = [
   { prefixo: "/os/mapa", capacidade: "os.ver" },
   { prefixo: "/os", capacidade: "os.ver" },
   { prefixo: "/fila", capacidade: "os.gerenciar" },
+  { prefixo: "/decisao", capacidade: "os.gerenciar" },
   { prefixo: "/roteiro", capacidade: "os.ver" },
   { prefixo: "/campo", capacidade: "os.executar" },
   { prefixo: "/central", capacidade: "operacao.supervisionar" },

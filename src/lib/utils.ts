@@ -120,3 +120,16 @@ export function inicioDoDia(d = new Date()) {
 export function diasAtras(dias: number) {
   return new Date(Date.now() - dias * DIA);
 }
+
+/**
+ * Os filtros da tela de volta em query string — é assim que a visão salva
+ * guarda um recorte e que a tela reconhece o recorte que está aplicado.
+ * Campo vazio não entra: `?status=` e nenhum filtro são a mesma coisa.
+ */
+export function queryDeFiltros(filtros: Record<string, string | undefined>) {
+  const parametros = new URLSearchParams();
+  for (const [chave, valor] of Object.entries(filtros)) {
+    if (valor) parametros.set(chave, valor);
+  }
+  return parametros.toString();
+}

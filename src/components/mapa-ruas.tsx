@@ -49,6 +49,16 @@ function paraPixel(lat: number, lng: number, zoom: number) {
   };
 }
 
+/** o caminho de volta: pixel do mundo → latitude e longitude */
+function paraCoordenada(x: number, y: number, zoom: number) {
+  const escala = TAMANHO_TILE * 2 ** zoom;
+  const n = Math.PI - (2 * Math.PI * y) / escala;
+  return {
+    longitude: (x / escala) * 360 - 180,
+    latitude: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))),
+  };
+}
+
 /** o zoom que faz todos os pontos caberem na área disponível */
 function zoomQueEnquadra(
   pontos: { latitude: number; longitude: number }[],
@@ -70,16 +80,35 @@ function zoomQueEnquadra(
   return ZOOM_MIN;
 }
 
+/** 3.17 — contorno desenhado sobre o mapa, em `[latitude, longitude]` */
+export type PoligonoMapa = {
+  id: string;
+  rotulo?: string;
+  vertices: [number, number][];
+  cor: string;
+  /** desenha os vértices como alças, para quem está editando */
+  editando?: boolean;
+};
+
+/** Fortaleza — só serve de enquadramento quando não há nada a mostrar ainda */
+const CENTRO_PADRAO = { lat: -3.7319, lng: -38.5267 };
+
 export function MapaRuas({
   pontos,
+  poligonos = [],
+  aoClicarNoMapa,
   altura = 460,
   className,
 }: {
   pontos: PontoMapaRua[];
+  poligonos?: PoligonoMapa[];
+  /** recebe a coordenada do clique; com ele o mapa vira prancheta (3.17) */
+  aoClicarNoMapa?: (latitude: number, longitude: number) => void;
   altura?: number;
   className?: string;
 }) {
   const caixa = useRef<HTMLDivElement>(null);
+  const inicioDoArrasto = useRef<{ x: number; y: number } | null>(null);
   const [tamanho, setTamanho] = useState({ largura: 800, altura });
   const [zoom, setZoom] = useState<number | null>(null);
   const [centro, setCentro] = useState<{ lat: number; lng: number } | null>(null);
@@ -108,6 +137,24 @@ export function MapaRuas({
     return () => observador.disconnect();
   }, []);
 
+  /**
+   * O enquadramento considera também os vértices do contorno: quem está
+   * desenhando um bairro pode não ter nenhum marcador na tela, e o mapa
+   * precisa abrir onde o desenho está.
+   */
+  const referencias = useMemo(
+    () => [
+      ...validos.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
+      ...poligonos.flatMap((poligono) =>
+        poligono.vertices.map(([latitude, longitude]) => ({
+          latitude,
+          longitude,
+        })),
+      ),
+    ],
+    [validos, poligonos],
+  );
+
   // enquadra na primeira renderização e sempre que os pontos mudarem de conjunto
   const chaveDosPontos = validos.map((p) => p.id).join(",");
   useEffect(() => {
@@ -126,7 +173,8 @@ export function MapaRuas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chaveDosPontos, tamanho.largura, tamanho.altura]);
 
-  if (!validos.length) {
+  // mapa sem marcador ainda é útil para desenhar; sem nada e sem lápis, não
+  if (!validos.length && !poligonos.length && !aoClicarNoMapa) {
     return (
       <div
         className="flex items-center justify-center rounded-lg border border-dashed border-[var(--borda-forte)] text-sm text-[var(--texto-3)]"
@@ -138,7 +186,11 @@ export function MapaRuas({
   }
 
   const z = zoom ?? 14;
-  const meio = centro ?? { lat: validos[0].latitude, lng: validos[0].longitude };
+  const meio =
+    centro ??
+    (referencias.length
+      ? { lat: referencias[0].latitude, lng: referencias[0].longitude }
+      : CENTRO_PADRAO);
   const pixelCentro = paraPixel(meio.lat, meio.lng, z);
 
   // canto superior esquerdo da área visível, em pixels do mundo
@@ -180,27 +232,35 @@ export function MapaRuas({
   }
 
   function reenquadrar() {
+    if (!referencias.length) return;
     setCentro({
       lat:
-        (Math.max(...validos.map((p) => p.latitude)) +
-          Math.min(...validos.map((p) => p.latitude))) /
+        (Math.max(...referencias.map((p) => p.latitude)) +
+          Math.min(...referencias.map((p) => p.latitude))) /
         2,
       lng:
-        (Math.max(...validos.map((p) => p.longitude)) +
-          Math.min(...validos.map((p) => p.longitude))) /
+        (Math.max(...referencias.map((p) => p.longitude)) +
+          Math.min(...referencias.map((p) => p.longitude))) /
         2,
     });
-    setZoom(zoomQueEnquadra(validos, tamanho.largura, tamanho.altura));
+    setZoom(zoomQueEnquadra(referencias, tamanho.largura, tamanho.altura));
   }
 
   /** desloca o centro em pixels, convertendo de volta para coordenada */
   function arrastarPara(dx: number, dy: number) {
-    const escala = TAMANHO_TILE * 2 ** z;
-    const novo = { x: pixelCentro.x - dx, y: pixelCentro.y - dy };
-    const lng = (novo.x / escala) * 360 - 180;
-    const n = Math.PI - (2 * Math.PI * novo.y) / escala;
-    const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-    setCentro({ lat, lng });
+    const destino = paraCoordenada(pixelCentro.x - dx, pixelCentro.y - dy, z);
+    setCentro({ lat: destino.latitude, lng: destino.longitude });
+  }
+
+  /** posição do clique dentro da área visível → coordenada no mundo */
+  function coordenadaDoEvento(evento: { clientX: number; clientY: number }) {
+    const area = caixa.current?.getBoundingClientRect();
+    if (!area) return null;
+    return paraCoordenada(
+      origem.x + (evento.clientX - area.left),
+      origem.y + (evento.clientY - area.top),
+      z,
+    );
   }
 
   const detalhe = validos.find((p) => p.id === selecionado);
@@ -214,13 +274,31 @@ export function MapaRuas({
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
           setArrasto({ x: e.clientX, y: e.clientY });
+          inicioDoArrasto.current = { x: e.clientX, y: e.clientY };
         }}
         onPointerMove={(e) => {
           if (!arrasto) return;
           arrastarPara(e.clientX - arrasto.x, e.clientY - arrasto.y);
           setArrasto({ x: e.clientX, y: e.clientY });
         }}
-        onPointerUp={() => setArrasto(null)}
+        onPointerUp={(e) => {
+          setArrasto(null);
+          if (!aoClicarNoMapa) return;
+
+          // arrastar o mapa não pode virar ponto novo no contorno
+          const inicio = inicioDoArrasto.current;
+          inicioDoArrasto.current = null;
+          if (
+            !inicio ||
+            Math.abs(e.clientX - inicio.x) > 4 ||
+            Math.abs(e.clientY - inicio.y) > 4
+          ) {
+            return;
+          }
+
+          const destino = coordenadaDoEvento(e);
+          if (destino) aoClicarNoMapa(destino.latitude, destino.longitude);
+        }}
         onPointerLeave={() => setArrasto(null)}
         onWheel={(e) => moverZoom(e.deltaY < 0 ? 1 : -1)}
       >
@@ -238,6 +316,60 @@ export function MapaRuas({
             loading="lazy"
           />
         ))}
+
+        {/* 3.17 — o contorno vai abaixo dos marcadores e não intercepta clique */}
+        {poligonos.length > 0 && (
+          <svg
+            className="pointer-events-none absolute inset-0"
+            width={tamanho.largura}
+            height={tamanho.altura}
+            aria-hidden
+          >
+            {poligonos.map((poligono) => {
+              const pixels = poligono.vertices.map(([lat, lng]) => {
+                const p = paraPixel(lat, lng, z);
+                return { x: p.x - origem.x, y: p.y - origem.y };
+              });
+              if (!pixels.length) return null;
+
+              return (
+                <g key={poligono.id}>
+                  {pixels.length >= 3 && (
+                    <polygon
+                      points={pixels.map((p) => `${p.x},${p.y}`).join(" ")}
+                      fill={poligono.cor}
+                      fillOpacity={0.15}
+                      stroke={poligono.cor}
+                      strokeWidth={2}
+                    />
+                  )}
+                  {pixels.length === 2 && (
+                    <line
+                      x1={pixels[0].x}
+                      y1={pixels[0].y}
+                      x2={pixels[1].x}
+                      y2={pixels[1].y}
+                      stroke={poligono.cor}
+                      strokeWidth={2}
+                    />
+                  )}
+                  {poligono.editando &&
+                    pixels.map((p, indice) => (
+                      <circle
+                        key={indice}
+                        cx={p.x}
+                        cy={p.y}
+                        r={4}
+                        fill="#fff"
+                        stroke={poligono.cor}
+                        strokeWidth={2}
+                      />
+                    ))}
+                </g>
+              );
+            })}
+          </svg>
+        )}
 
         {validos.map((ponto) => {
           const p = paraPixel(ponto.latitude, ponto.longitude, z);

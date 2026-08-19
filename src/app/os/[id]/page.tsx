@@ -12,7 +12,8 @@ import {
 } from "@/lib/dominio";
 import { detalheOrdem, prazoLegivel } from "@/lib/servicos/ordens";
 import { materiaisDaOrdem } from "@/lib/servicos/ordens";
-import { dataHora, moeda, numero, quantidade } from "@/lib/utils";
+import { minutosLegiveis } from "@/lib/servicos/eventos";
+import { dataHora, hora, moeda, numero, quantidade } from "@/lib/utils";
 import {
   BotaoLink,
   CabecalhoPagina,
@@ -128,6 +129,24 @@ export default async function DetalheOS({
                 {
                   rotulo: "Concluída em",
                   valor: ordem.concluidaEm ? dataHora(ordem.concluidaEm) : "—",
+                },
+                // 3.35 / 3.36 — detectados pelo raio, não digitados
+                {
+                  rotulo: "Chegada no local",
+                  valor: ordem.chegadaEm ? dataHora(ordem.chegadaEm) : "—",
+                },
+                {
+                  rotulo: "Tempo no local",
+                  valor:
+                    ordem.minutosNoLocal !== null ? (
+                      minutosLegiveis(ordem.minutosNoLocal)
+                    ) : ordem.chegadaEm ? (
+                      <span className="text-[var(--texto-3)]">
+                        no local desde {hora(ordem.chegadaEm)}
+                      </span>
+                    ) : (
+                      "—"
+                    ),
                 },
               ]}
             />

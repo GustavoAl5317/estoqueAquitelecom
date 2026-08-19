@@ -596,6 +596,31 @@ export function FormularioParametros({ atuais }: { atuais: Parametros }) {
         </Campo>
       </div>
 
+      {/* 3.34 / 3.35 */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Campo
+          rotulo="Raio de chegada (m)"
+          dica="Distância do endereço da OS a partir da qual o técnico é considerado no local."
+        >
+          <input
+            type="number"
+            name="raioChegadaMetros"
+            min={20}
+            step={10}
+            defaultValue={atuais.raioChegadaMetros}
+          />
+        </Campo>
+        <Campo
+          rotulo="Ao detectar a chegada"
+          dica="A chegada é sempre registrada na timeline; mover a situação sozinho é opcional."
+        >
+          <select name="moverAoChegar" defaultValue={String(atuais.moverAoChegar)}>
+            <option value="0">Só registrar a chegada</option>
+            <option value="1">Mover a OS para em atendimento</option>
+          </select>
+        </Campo>
+      </div>
+
       <BotaoEnviar>Salvar parâmetros</BotaoEnviar>
     </FormularioAcao>
   );

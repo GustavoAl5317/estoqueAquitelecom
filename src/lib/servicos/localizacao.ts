@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ErroDeNegocio, auditar } from "./nucleo";
 import { distanciaKm } from "./frota";
+import { avaliarGeofence } from "./geofence";
 
 /**
  * 3.4 / 3.5 — LOCALIZAÇÃO PELO NAVEGADOR.
@@ -28,6 +29,8 @@ export async function registrarLocalizacaoTecnico(dados: {
   longitude: number;
   precisao?: number | null;
   origem?: string;
+  /** quem está reportando, para assinar a chegada detectada (3.35) */
+  usuarioId?: string | null;
 }) {
   if (
     !Number.isFinite(dados.latitude) ||
@@ -50,7 +53,7 @@ export async function registrarLocalizacaoTecnico(dados: {
     );
   }
 
-  return prisma.localizacaoTecnico.create({
+  const leitura = await prisma.localizacaoTecnico.create({
     data: {
       tecnicoId: dados.tecnicoId,
       latitude: dados.latitude,
@@ -60,6 +63,27 @@ export async function registrarLocalizacaoTecnico(dados: {
       origem: dados.origem ?? "NAVEGADOR",
     },
   });
+
+  /**
+   * 3.35 — a leitura imprecisa não decide chegada.
+   *
+   * Uma coordenada com 2 km de incerteza cairia dentro do raio de qualquer OS
+   * do bairro. Registrar a posição vale; concluir que o técnico chegou, não.
+   */
+  const geofence =
+    dados.precisao === null ||
+    dados.precisao === undefined ||
+    dados.precisao <= METROS_PRECISAO_UTIL
+      ? await avaliarGeofence({
+          tecnicoId: dados.tecnicoId,
+          latitude: dados.latitude,
+          longitude: dados.longitude,
+          capturadoEm: leitura.capturadoEm,
+          usuarioId: dados.usuarioId ?? null,
+        })
+      : { chegadas: [], saidas: [] };
+
+  return { leitura, geofence };
 }
 
 /** 3.5 — abrir e fechar a jornada, que é o que liga e desliga o rastreamento. */
