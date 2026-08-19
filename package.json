@@ -15,6 +15,7 @@
     "db:check": "tsx prisma/verificar.ts",
     "acesso": "tsx scripts/acesso.ts",
     "producao": "tsx scripts/iniciar-producao.ts",
+    "sgp:sync": "tsx scripts/sgp-sincronizar.ts",
     "sgp": "tsx scripts/sgp-explorar.ts",
     "traccar": "tsx scripts/traccar.ts"
   },
