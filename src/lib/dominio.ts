@@ -424,6 +424,8 @@ export const TIPO_EVENTO_OS = dicionario([
   { valor: "ATRIBUIDA", rotulo: "Responsável definido", tom: "informativo" },
   { valor: "STATUS", rotulo: "Mudança de situação", tom: "roxo" },
   { valor: "MATERIAL", rotulo: "Material aplicado", tom: "positivo" },
+  { valor: "CHEGADA", rotulo: "Chegada no local", tom: "informativo" },
+  { valor: "SAIDA", rotulo: "Saída do local", tom: "neutro" },
   { valor: "INCIDENTE", rotulo: "Relacionada a incidente", tom: "critico" },
   { valor: "OBSERVACAO", rotulo: "Observação", tom: "neutro" },
 ] as const as Opcao<string>[]);

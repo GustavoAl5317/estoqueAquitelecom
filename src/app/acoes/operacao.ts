@@ -9,7 +9,12 @@ import {
   criarOrdem,
   moverOrdem,
 } from "@/lib/servicos/ordens";
-import { criarRegiao, salvarBairro } from "@/lib/servicos/regioes";
+import {
+  criarRegiao,
+  lerPoligono,
+  salvarBairro,
+  salvarPoligono,
+} from "@/lib/servicos/regioes";
 import { podeFazer } from "@/lib/permissoes";
 import { prisma } from "@/lib/prisma";
 import type { Resultado } from "./estoque";
@@ -201,6 +206,29 @@ export async function acaoCriarRegiao(
   return executar(
     () => criarRegiao(String(dados.get("nome") ?? ""), usuario.id),
     ["/regioes"],
+  );
+}
+
+/** 3.17 — o contorno do bairro, desenhado no mapa da tela de regiões. */
+export async function acaoSalvarPoligono(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "operacao.supervisionar")) {
+    return { erro: "Seu perfil não permite alterar o contorno de um bairro." };
+  }
+
+  return executar(
+    () =>
+      salvarPoligono(
+        {
+          bairroId: String(dados.get("bairroId") ?? ""),
+          vertices: lerPoligono(String(dados.get("vertices") ?? "")),
+        },
+        usuario.id,
+      ),
+    ["/regioes", "/os/mapa"],
   );
 }
 

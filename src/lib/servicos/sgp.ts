@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ErroDeNegocio } from "./nucleo";
 import { registrarEvento } from "./eventos";
 import { severidadeInicial } from "./severidade";
+import { bairroDaCoordenada } from "./regioes";
 import { TIPO_OS } from "@/lib/dominio";
 
 /**
@@ -244,6 +245,16 @@ export async function sincronizarContratos(
       const { latitude, longitude } = coordenada(chamado.contrato_endereco_ll);
       if (latitude === null) resultado.semCoordenada += 1;
 
+      /*
+       * 3.17 — o SGP manda coordenada e não manda bairro. Quando o contorno
+       * está desenhado, a própria coordenada diz de quem é a área — e com o
+       * bairro vêm o responsável e a região que o score usa.
+       */
+      const bairro =
+        latitude !== null && longitude !== null
+          ? await bairroDaCoordenada(latitude, longitude)
+          : null;
+
       const abertaEm =
         dataBr(chamado.os_data_cadastro) ?? dataBr(chamado.oc_data_cadastro) ?? new Date();
       const status = statusDoTexto(chamado.os_status_descricao);
@@ -270,6 +281,7 @@ export async function sincronizarContratos(
         cidade: chamado.contrato_pop?.trim() || null,
         latitude,
         longitude,
+        ...(bairro ? { bairroId: bairro.id, bairroNome: bairro.nome } : {}),
         status,
         agendadaPara: dataBr(chamado.os_data_agendamento),
         concluidaEm:

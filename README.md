@@ -279,16 +279,23 @@ traz dados — ver abaixo.
 **Bloco 3 — Geolocalização:** Central de Controle, rastreadores de três
 naturezas (veículo, celular de técnico, equipamento), vínculo veículo↔técnico,
 ingestão de posições, mapa operacional, replay de trajeto com detecção de
-paradas, regiões e bairros com responsável principal e reserva, roteirização por
-proximidade e parâmetros de análise configuráveis.
+paradas, regiões e bairros com responsável principal e reserva, contorno do
+bairro desenhado no mapa, cerca com chegada e tempo no local, quadro por
+técnico, equipe e bairro, visões salvas, performance territorial com sugestão
+de rebalanceamento, roteirização por proximidade e parâmetros configuráveis.
 
 **Bloco 4 — Inteligência:** fila inteligente com recomendação explicada,
-score configurável e leitura da operação em linguagem corrente.
+score configurável, leitura da operação em linguagem corrente, previsão de
+atraso e Central de Decisão.
 
 ### O que falta
 
-- **Autenticação.** Não há tela de login; o responsável vem de um seletor.
-- **Importação de OS do SGP.** A rota `/api/os/list/` responde 200 mas devolve
-  lista vazia mesmo com o token liberado — provavelmente o usuário mapeado ao
-  token não enxerga ordens de serviço.
-- **Produção.** SQLite → PostgreSQL, serviço, HTTPS e backup.
+Nada do escopo dos quatro blocos. O que resta é infraestrutura e decisão de
+terceiros:
+
+- **Produção.** SQLite → PostgreSQL, serviço, HTTPS e backup — os arquivos e o
+  passo a passo estão em [`implantacao/`](implantacao/README.md).
+- **Credenciais.** O token do SGP e a senha do Traccar passaram pelo chat e
+  precisam ser rotacionados.
+- **Com o cliente.** Política de rastreamento dos celulares (LGPD), a natureza
+  dos quatro aparelhos não classificados e a carga inicial de materiais.

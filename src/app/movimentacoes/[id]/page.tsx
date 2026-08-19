@@ -232,6 +232,20 @@ export default async function FichaMovimentacao({
                 valor: movimentacao.solicitante?.nome ?? "—",
               },
               { rotulo: "Data", valor: dataHora(movimentacao.criadoEm) },
+              // 1.35 — informada pelo navegador de quem lançou, quando havia
+              ...(movimentacao.latitude !== null && movimentacao.longitude !== null
+                ? [
+                    {
+                      rotulo: "Local do lançamento",
+                      valor: (
+                        <span className="font-mono text-xs">
+                          {movimentacao.latitude.toFixed(5)},{" "}
+                          {movimentacao.longitude.toFixed(5)}
+                        </span>
+                      ),
+                    },
+                  ]
+                : []),
               {
                 rotulo: "Itens",
                 valor: `${movimentacao.itens.length} · ${numero(

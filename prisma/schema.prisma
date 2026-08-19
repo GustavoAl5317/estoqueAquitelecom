@@ -645,6 +645,13 @@ model OrdemServico {
   agendadaPara DateTime?
   concluidaEm  DateTime?
 
+  /// 3.35 / 3.36 — chegada detectada pelo raio em torno do endereço, saída
+  /// detectada pelo afastamento, e a permanência que sai da diferença entre as
+  /// duas. Preenchidos pelo geofence, nunca digitados.
+  chegadaEm      DateTime?
+  saidaEm        DateTime?
+  minutosNoLocal Int?
+
   status     String  @default("ABERTA")
   severidade String  @default("MEDIA")
   prioridade String  @default("P3")
@@ -701,6 +708,11 @@ model Bairro {
   id     String @id @default(cuid())
   nome   String
   cidade String
+
+  /// 3.17 — contorno do bairro como lista de vértices `[[lat,lng], …]` em JSON.
+  /// Texto porque o SQLite não tem `Json`, e desenhado a mão na tela de regiões:
+  /// não existe base oficial de limite de bairro que a operação possa importar.
+  poligono String?
 
   regiao   Regiao? @relation(fields: [regiaoId], references: [id])
   regiaoId String?

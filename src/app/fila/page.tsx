@@ -9,7 +9,9 @@ import {
 import { filaInteligente, leituraDaOperacao } from "@/lib/servicos/fila";
 import { prazoLegivel } from "@/lib/servicos/ordens";
 import { parametros, somaDosPesos } from "@/lib/servicos/parametros";
-import { numero, tempoRelativo } from "@/lib/utils";
+import { visoesParaTela } from "@/lib/servicos/visoes";
+import { usuarioAtual } from "@/lib/sessao";
+import { numero, queryDeFiltros, tempoRelativo } from "@/lib/utils";
 import {
   Aviso,
   BotaoLink,
@@ -20,6 +22,7 @@ import {
   Vazio,
 } from "@/components/ui";
 import { AcaoRapida } from "@/components/formulario";
+import { VisoesSalvas } from "@/components/visoes-salvas";
 import { acaoAtribuirOrdem } from "@/app/acoes/operacao";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +42,13 @@ export default async function Fila({
   const { semResponsavel } = await searchParams;
   const somenteSemResponsavel = semResponsavel === "1";
 
-  const [fila, leitura, config] = await Promise.all([
+  const usuario = await usuarioAtual();
+
+  const [fila, leitura, config, visoes] = await Promise.all([
     filaInteligente({ limite: 40, somenteSemResponsavel }),
     leituraDaOperacao(),
     parametros(),
+    visoesParaTela("/fila", usuario.id),
   ]);
 
   const comRecomendacao = fila.filter((i) => i.candidatos.length > 0).length;
@@ -65,6 +71,14 @@ export default async function Fila({
           </>
         }
       />
+
+      <Cartao className="mb-4">
+        <VisoesSalvas
+          tela="/fila"
+          filtrosAtuais={queryDeFiltros({ semResponsavel })}
+          visoes={visoes}
+        />
+      </Cartao>
 
       {/* 4.10 */}
       <Cartao

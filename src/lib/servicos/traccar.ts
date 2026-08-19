@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ErroDeNegocio } from "./nucleo";
 import { registrarPosicao, registrarRastreador } from "./frota";
+import { avaliarGeofenceDoRastreador } from "./geofence";
 
 /**
  * CONECTOR TRACCAR.
@@ -224,6 +225,14 @@ export async function sincronizarPosicoes(
         origem: "RASTREADOR",
       });
       resultado.posicoesGravadas += 1;
+
+      // 3.35 — a posição do aparelho também vale como chegada no cliente
+      await avaliarGeofenceDoRastreador({
+        rastreadorId: rastreador.id,
+        latitude: posicao.latitude,
+        longitude: posicao.longitude,
+        capturadoEm,
+      });
     } catch (erro) {
       resultado.erros.push(
         `${dispositivo.name}: ${erro instanceof Error ? erro.message : "falha"}`,

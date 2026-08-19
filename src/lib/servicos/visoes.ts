@@ -74,3 +74,21 @@ export async function apagarVisao(id: string, usuarioId: string) {
 
   await prisma.visaoSalva.delete({ where: { id } });
 }
+
+/**
+ * A mesma lista, já no formato que a tela consome: quem criou aparece como
+ * dono (e só ele vê o botão de apagar), e o nome do autor acompanha a visão
+ * compartilhada para que ninguém precise adivinhar de onde ela veio.
+ */
+export async function visoesParaTela(tela: string, usuarioId: string) {
+  const visoes = await visoesDaTela(tela, usuarioId);
+
+  return visoes.map((visao) => ({
+    id: visao.id,
+    nome: visao.nome,
+    filtros: visao.filtros,
+    compartilhada: visao.compartilhada,
+    minha: visao.criadaPorId === usuarioId,
+    autor: visao.criadaPor.nome,
+  }));
+}

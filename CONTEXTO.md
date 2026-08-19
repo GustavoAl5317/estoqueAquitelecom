@@ -18,8 +18,8 @@ Quatro blocos de escopo:
 |---|---|---|
 | 1 | Estoque e rastreabilidade | completo |
 | 2 | Ordens de serviço | completo, com sincronização SGP funcionando |
-| 3 | Geolocalização e campo | ~85% — faltam 4 frentes |
-| 4 | Inteligência operacional | ~85% — falta a Central de Decisão |
+| 3 | Geolocalização e campo | completo |
+| 4 | Inteligência operacional | completo, com a Central de Decisão |
 
 ---
 
@@ -45,11 +45,13 @@ Estas vieram do cliente e **não devem ser revertidas** sem falar com ele:
 ## 3. Estrutura do repositório
 
 ```
+implantacao/         systemd, nginx, backup e o caminho para o PostgreSQL
+
 prisma/
   schema.prisma      modelo dos quatro blocos
   seed.ts            ~90 dias de operação fictícia
   verificar.ts       conferência saldo × razão
-  migrations/        6 migrações
+  migrations/        8 migrações
 
 scripts/
   acesso.ts          diagnóstico e reparo de login
@@ -62,14 +64,14 @@ src/
   proxy.ts           barreira de sessão (era middleware.ts; o Next 16 renomeou)
   app/
     acoes/           server actions
-    …                42 rotas
+    …                43 rotas
   components/        design system e formulários
   lib/
     auth.ts          scrypt, sessão, senha
     permissoes.ts    capacidades por papel
     sessao.ts        usuário atual e barreira
     dominio.ts       domínios fechados — fonte única de verdade
-    servicos/        25 arquivos de regra de negócio
+    servicos/        27 arquivos de regra de negócio
 ```
 
 ### Conceitos centrais
@@ -207,8 +209,9 @@ contêm dados de cliente.
 Debian 11, host `005-DB`, projeto em `/root/estoqueAquitelecom`.
 Node instalado via NodeSource.
 
-Ainda **não há systemd, nginx nem HTTPS**. Roda com `npm run dev` em terminal
-aberto. Banco é SQLite.
+Ainda **não há systemd, nginx nem HTTPS** aplicados na VM. Roda com
+`npm run dev` em terminal aberto e banco SQLite. Os arquivos prontos para
+mudar isso estão em `implantacao/` — falta executá-los lá.
 
 **Armadilha recorrente:** `prisma migrate deploy` aplica a migração mas **não
 regenera o cliente**. Depois de `git pull` com migração nova:
@@ -240,26 +243,37 @@ RASTREADOR_SEGREDO   opcional — só para webhook; com Traccar por polling, dei
 
 ## 8. O que falta do escopo
 
-Seis frentes. Nenhuma bloqueia o uso; são camadas de leitura sobre dados que já
-existem no banco.
+**Nada.** As seis frentes que faltavam foram fechadas em 19/08/2026:
 
-| Escopo | O que é | Observação |
+| Escopo | O que é | Onde está |
 |---|---|---|
-| 3.34–3.36 | Geofence, chegada automática, tempo no local | bairro já resolve por nome |
-| 3.25–3.27 | Kanban por técnico, equipe e bairro | hoje só o quadro geral com filtro |
-| 2.19 / 3.29 | Botão de salvar visão | `visoes.ts` e a tabela já existem — falta a tela |
-| 3.43–3.46 / 3.57 | Cobertura territorial, performance, rebalanceamento | `/regioes` já calcula parte |
-| 3.56 / 4.10 | Previsão de atraso e Central de Decisão | o cálculo de SLA já existe na fila |
-| 1.35 / 3.17 | Coordenada na movimentação e polígonos | campos já existem no schema |
+| 2.19 / 3.29 | Visões salvas | `visoes.ts` + `visoes-salvas.tsx`, em `/os`, `/os/quadro` e `/fila` |
+| 3.25–3.27 | Quadro por técnico, equipe e bairro | `quadroPorRecorte` em `ordens.ts`; seletor de recorte em `/os/quadro` |
+| 3.34–3.36 | Cerca, chegada e tempo no local | `geofence.ts`; parâmetros na Central; campos novos na OS |
+| 3.43–3.46 / 3.57 | Performance territorial e rebalanceamento | `regioes.ts` → `/regioes` |
+| 3.56 / 4.10 | Previsão de atraso e Central de Decisão | `decisao.ts` → `/decisao` |
+| 1.35 / 3.17 | Coordenada na movimentação e contorno do bairro | formulário de movimentação; `EditorDePoligono` em `/regioes` |
 
-**Ordem sugerida:** Kanban por recorte e visões salvas primeiro — são as que o
-supervisor sente falta no uso diário. Geofence e polígonos por último.
+Três decisões tomadas aí que vale conhecer antes de mexer:
+
+1. **A cerca registra chegada sempre, mas só move o status se alguém ligar.**
+   `moverAoChegar` nasce em 0. Mudar a situação da OS de outra pessoa sozinho
+   produz registro bonito e realidade errada.
+2. **A previsão de atraso usa mediana, não média.** Uma OS esquecida aberta a
+   noite toda levava a média do tipo para doze horas.
+3. **O contorno do bairro é desenhado à mão.** Não existe base oficial para
+   importar, e com ele a OS que chega do SGP só com coordenada encontra sozinha
+   a área e o responsável.
 
 ### Fora do escopo, mas necessário para produção
 
-- SQLite → PostgreSQL
-- systemd ou pm2, nginx, HTTPS
-- rotina de backup
+Os arquivos e o passo a passo estão em `implantacao/` — systemd, nginx com
+HTTPS e backup são cópia de arquivo; só o PostgreSQL exige janela.
+
+- SQLite → PostgreSQL (`implantacao/README.md`, seção 4)
+- systemd (`implantacao/estoque.service`)
+- nginx e HTTPS (`implantacao/nginx.conf`)
+- rotina de backup (`implantacao/backup.sh`)
 - rotação das credenciais que passaram pelo chat
 
 ---

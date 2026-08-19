@@ -1,0 +1,42 @@
+# Serviço do systemd para a plataforma.
+#
+# Hoje a VM roda `npm run dev` num terminal aberto: se a sessão SSH cair, a
+# operação cai junto. Isto resolve as duas coisas que faltam — subir sozinho
+# no boot e voltar sozinho depois de um erro.
+#
+#   cp implantacao/estoque.service /etc/systemd/system/estoque.service
+#   systemctl daemon-reload
+#   systemctl enable --now estoque
+#   systemctl status estoque
+#
+# Os logs ficam no journal:  journalctl -u estoque -f
+
+[Unit]
+Description=Plataforma operacional Aqui Telecom
+Documentation=https://github.com/GustavoAl5317/estoqueAquitelecom
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/estoqueAquitelecom
+
+# `next start` serve o build de produção; `npm run dev` nunca deve rodar aqui
+ExecStart=/usr/bin/npm run start
+EnvironmentFile=/root/estoqueAquitelecom/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+Restart=always
+RestartSec=5
+# um erro de configuração não pode virar laço infinito de reinício
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=estoque
+
+[Install]
+WantedBy=multi-user.target

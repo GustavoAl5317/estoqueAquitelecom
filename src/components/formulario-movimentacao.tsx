@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowRight, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, MapPin, Plus, Trash2 } from "lucide-react";
 import {
   ESTADO_FISICO,
   FINALIDADE,
@@ -532,6 +532,10 @@ export function FormularioMovimentacao({
             <input name="observacao" />
           </Campo>
         </div>
+
+        <div className="mt-3 border-t border-[var(--borda)] pt-3">
+          <CoordenadaDaMovimentacao />
+        </div>
       </Cartao>
 
       <div className="flex items-center gap-2">
@@ -544,5 +548,83 @@ export function FormularioMovimentacao({
         </Link>
       </div>
     </FormularioAcao>
+  );
+}
+
+/**
+ * 1.35 — ONDE A MOVIMENTAÇÃO ACONTECEU.
+ *
+ * Material que sai para a rua sai de algum lugar, e no dia da divergência a
+ * pergunta "onde isso foi lançado?" costuma não ter resposta. O navegador
+ * responde em um clique.
+ *
+ * É opcional de propósito: o almoxarife lança do balcão, onde a coordenada não
+ * acrescenta nada, e travar o formulário por causa dela atrasaria a operação
+ * inteira para resolver um caso de exceção.
+ */
+function CoordenadaDaMovimentacao() {
+  const [posicao, setPosicao] = useState<{
+    latitude: number;
+    longitude: number;
+    precisao: number | null;
+  } | null>(null);
+  const [estado, setEstado] = useState<"parado" | "buscando" | "negado" | "indisponivel">(
+    "parado",
+  );
+
+  function capturar() {
+    if (!("geolocation" in navigator)) return setEstado("indisponivel");
+    setEstado("buscando");
+
+    navigator.geolocation.getCurrentPosition(
+      (leitura) => {
+        setPosicao({
+          latitude: leitura.coords.latitude,
+          longitude: leitura.coords.longitude,
+          precisao: leitura.coords.accuracy ?? null,
+        });
+        setEstado("parado");
+      },
+      (erro) =>
+        setEstado(erro.code === erro.PERMISSION_DENIED ? "negado" : "indisponivel"),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="latitude" value={posicao?.latitude ?? ""} />
+      <input type="hidden" name="longitude" value={posicao?.longitude ?? ""} />
+
+      <Botao
+        variante="sutil"
+        onClick={capturar}
+        disabled={estado === "buscando"}
+        type="button"
+      >
+        <MapPin className="size-4" aria-hidden />
+        {posicao ? "Atualizar local" : "Registrar onde estou"}
+      </Botao>
+
+      <span className="text-xs text-[var(--texto-3)]">
+        {estado === "buscando"
+          ? "obtendo a localização…"
+          : estado === "negado"
+            ? "o navegador bloqueou a localização — o lançamento segue sem ela"
+            : estado === "indisponivel"
+              ? "localização indisponível neste aparelho"
+              : posicao
+                ? `${posicao.latitude.toFixed(5)}, ${posicao.longitude.toFixed(5)}${
+                    posicao.precisao ? ` · ±${Math.round(posicao.precisao)} m` : ""
+                  }`
+                : "opcional — útil quando o lançamento é feito na rua"}
+      </span>
+
+      {posicao && (
+        <Botao variante="sutil" type="button" onClick={() => setPosicao(null)}>
+          Remover
+        </Botao>
+      )}
+    </div>
   );
 }
