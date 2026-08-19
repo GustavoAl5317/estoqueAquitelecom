@@ -89,7 +89,10 @@ export async function autenticar(
   jar.set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // amarrado a HTTPS_ATIVO, não a NODE_ENV: build de produção não implica
+    // que o tráfego já chegue por HTTPS, e cookie Secure sobre HTTP puro
+    // nunca volta ao servidor — a sessão morre no primeiro clique.
+    secure: process.env.HTTPS_ATIVO === "1",
     path: "/",
     expires: expiraEm,
   });

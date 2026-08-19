@@ -75,6 +75,18 @@ Depois do certbot, feche a porta 3000 para o mundo — só o nginx precisa dela:
 ufw allow 'Nginx Full' && ufw allow OpenSSH && ufw enable
 ```
 
+Só então ligue `HTTPS_ATIVO=1` no `.env` e reinicie o serviço:
+
+```bash
+echo 'HTTPS_ATIVO=1' >> .env
+systemctl restart estoque
+```
+
+O cookie de sessão só é marcado `Secure` com essa variável ligada. Antes do
+HTTPS estar de pé, deixe **desligada** — cookie `Secure` sobre HTTP puro nunca
+volta ao navegador, e todo clique parece deslogado (foi exatamente o que
+aconteceu na implantação de 19/08/2026, antes do HTTPS existir).
+
 **Antes disso é preciso um domínio apontando para o IP da VM.** Sem DNS o
 certbot não emite certificado.
 
