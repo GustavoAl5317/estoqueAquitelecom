@@ -1,7 +1,6 @@
 "use server";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   ErroDeLogin,
@@ -20,14 +19,21 @@ import type { Resultado } from "./estoque";
 /**
  * 3.66 — entrar, sair e trocar senha.
  *
- * `redirect` do Next funciona lançando uma exceção; por isso ele fica **fora**
- * do try, senão o catch engoliria o redirecionamento e o login pareceria ter
- * falhado depois de dar certo.
+ * Nenhuma das três usa `redirect()`. As telas de login e de senha se desenham
+ * fora da casca do sistema, e o layout raiz escolhe entre casca e não-casca
+ * pelo caminho da requisição — escolha que uma navegação de cliente não
+ * refaz, porque o layout é reaproveitado. Atravessar essa fronteira por
+ * `redirect()` entregava a tela de destino dentro da moldura errada, e só um
+ * F5 endireitava.
+ *
+ * Por isso quem navega é o formulário, com carregamento completo de página.
  */
+
+export type ResultadoComDestino = Resultado & { destino?: string };
 export async function acaoEntrar(
-  _estado: Resultado,
+  _estado: ResultadoComDestino,
   dados: FormData,
-): Promise<Resultado> {
+): Promise<ResultadoComDestino> {
   let destino: string;
 
   try {
@@ -46,18 +52,18 @@ export async function acaoEntrar(
     return { erro: "Não foi possível entrar. Tente novamente." };
   }
 
-  redirect(destino);
+  return { ok: true, destino };
 }
 
-export async function acaoSair() {
+export async function acaoSair(): Promise<ResultadoComDestino> {
   await encerrarSessao();
-  redirect("/entrar");
+  return { ok: true, destino: "/entrar" };
 }
 
 export async function acaoTrocarSenha(
-  _estado: Resultado,
+  _estado: ResultadoComDestino,
   dados: FormData,
-): Promise<Resultado> {
+): Promise<ResultadoComDestino> {
   const usuario = await usuarioAtual();
   const nova = String(dados.get("senhaNova") ?? "");
 
@@ -77,7 +83,18 @@ export async function acaoTrocarSenha(
     return { erro: "Não foi possível trocar a senha." };
   }
 
-  redirect(telaInicial(usuario.papel));
+  /*
+   * Sem `redirect()` aqui de propósito.
+   *
+   * A tela de senha se desenha sem a casca do sistema, e o layout raiz escolhe
+   * entre casca e não-casca pelo caminho da requisição. Numa navegação de
+   * cliente o layout é reaproveitado, então sair daqui por `redirect()` levava
+   * o usuário para /campo ainda dentro da moldura da tela de senha — o
+   * conteúdo virava item de flex e a tela só se ajeitava com F5.
+   *
+   * Quem navega é o formulário, com carregamento completo.
+   */
+  return { ok: true, destino: telaInicial(usuario.papel) };
 }
 
 /** 3.67 — o administrador define a senha inicial de outro usuário. */

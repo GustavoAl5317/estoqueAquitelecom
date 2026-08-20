@@ -99,7 +99,13 @@ export function MenuUsuario({
               <KeyRound className="size-4" aria-hidden /> Trocar senha
             </Link>
 
-            <form action={acaoSair}>
+            <form
+              action={async () => {
+                const resultado = await acaoSair();
+                // documento novo: a tela de login vive fora da casca
+                window.location.assign(resultado.destino ?? "/entrar");
+              }}
+            >
               <button
                 type="submit"
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--critico)] hover:bg-[var(--superficie-3)]"

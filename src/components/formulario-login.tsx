@@ -1,13 +1,34 @@
 "use client";
 
+import { useActionState, useEffect } from "react";
 import { LogIn } from "lucide-react";
-import { acaoEntrar, acaoTrocarSenha } from "@/app/acoes/conta";
+import {
+  acaoEntrar,
+  acaoTrocarSenha,
+  type ResultadoComDestino,
+} from "@/app/acoes/conta";
 import { Aviso, Campo } from "./ui";
 import { BotaoEnviar, FormularioAcao } from "./formulario";
 
 export function FormularioLogin({ destino }: { destino?: string }) {
+  const [estado, enviar] = useActionState<ResultadoComDestino, FormData>(
+    acaoEntrar,
+    {},
+  );
+
+  // ver o comentário em acoes/conta.ts: a casca do sistema só monta certo
+  // num documento novo
+  useEffect(() => {
+    if (estado.ok && estado.destino) window.location.assign(estado.destino);
+  }, [estado.ok, estado.destino]);
+
   return (
-    <FormularioAcao acao={acaoEntrar} className="space-y-3">
+    <form action={enviar} className="space-y-3">
+      {estado.erro && (
+        <Aviso tom="critico" titulo="Não foi possível entrar">
+          {estado.erro}
+        </Aviso>
+      )}
       {destino && <input type="hidden" name="destino" value={destino} />}
 
       <Campo rotulo="E-mail" obrigatorio>
@@ -33,7 +54,7 @@ export function FormularioLogin({ destino }: { destino?: string }) {
       <BotaoEnviar className="w-full">
         <LogIn className="size-4" aria-hidden /> Entrar
       </BotaoEnviar>
-    </FormularioAcao>
+    </form>
   );
 }
 
@@ -48,8 +69,30 @@ export function FormularioSenha({
 }: {
   primeiroAcesso?: boolean;
 }) {
+  const [estado, enviar] = useActionState<ResultadoComDestino, FormData>(
+    acaoTrocarSenha,
+    {},
+  );
+
+  /*
+   * Carregamento completo, não navegação de cliente: a tela de senha vive
+   * fora da casca do sistema, e só um documento novo faz o layout raiz voltar
+   * a montar a casca do destino.
+   */
+  useEffect(() => {
+    if (estado.ok && estado.destino) window.location.assign(estado.destino);
+  }, [estado.ok, estado.destino]);
+
   return (
-    <FormularioAcao acao={acaoTrocarSenha} className="space-y-3">
+    <form action={enviar} className="space-y-3">
+      {estado.erro && (
+        <Aviso tom="critico" titulo="Não foi possível trocar a senha">
+          {estado.erro}
+        </Aviso>
+      )}
+      {estado.ok && (
+        <Aviso tom="positivo">Senha alterada. Abrindo o sistema…</Aviso>
+      )}
       {primeiroAcesso && (
         <Aviso tom="atencao" titulo="Defina uma senha sua">
           A senha atual foi criada por um administrador. Enquanto ela não for
@@ -94,6 +137,6 @@ export function FormularioSenha({
       </p>
 
       <BotaoEnviar className="w-full">Salvar nova senha</BotaoEnviar>
-    </FormularioAcao>
+    </form>
   );
 }
