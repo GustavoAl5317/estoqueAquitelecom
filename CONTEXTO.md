@@ -137,6 +137,12 @@ Outras armadilhas, todas confirmadas em produção:
 - **`403` intermitente é limite de requisição, não permissão.** Perseguimos
   permissão por três rodadas por causa disso. O intervalo padrão é 4 segundos.
 - **`os_id` chega como número** quando há OS e string vazia quando não há.
+- **As datas vêm em dois formatos na mesma resposta.** Os campos do chamado
+  (`oc_*`) em formato brasileiro, `20/08/2026 11:31:24`; os da ordem (`os_*`)
+  em ISO, `2026-08-20T00:00:00`. Ler só um deles faz o outro virar `null` em
+  silêncio — foi assim que `agendadaPara` ficou vazia até 20/08/2026.
+- **`os_tecnico_responsavel` vem preenchido** com o nome digitado no SGP, texto
+  livre e sem id. É casado por nome normalizado com o cadastro daqui.
 - **`contrato_endereco_ll` já traz latitude e longitude** — a OS entra no mapa
   sem geocodificação.
 - O domínio real é `aquitelecom.sgp.tsmx.com.br`, não `sys.aquitelecom.com`.

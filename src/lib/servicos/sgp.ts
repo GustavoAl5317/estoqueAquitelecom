@@ -131,10 +131,27 @@ function coordenada(bruto: ValorSgp | undefined) {
   return { latitude: lat, longitude: lng };
 }
 
-/** "05/02/2021 17:51:01" — formato brasileiro, que o `new Date` lê ao contrário */
+/**
+ * Data do SGP — que vem em **dois formatos diferentes na mesma resposta**.
+ *
+ * Os campos do chamado (`oc_*`) chegam em formato brasileiro, "20/08/2026
+ * 11:31:24". Os da ordem de serviço (`os_*`) chegam em ISO,
+ * "2026-08-20T00:00:00". Ler só o brasileiro fazia toda data de `os_*` virar
+ * null em silêncio — e `agendadaPara` nunca era preenchida, o que derrubava o
+ * filtro por agendamento e o roteiro do dia.
+ *
+ * Sem sufixo de fuso, o ISO é lido como hora local, que é o que o SGP quer
+ * dizer: o horário é o de Fortaleza, não UTC.
+ */
 function dataBr(bruto: ValorSgp | undefined) {
   const cru = texto(bruto);
   if (!cru) return null;
+
+  if (!cru.includes("/")) {
+    const iso = new Date(cru);
+    return Number.isNaN(iso.getTime()) ? null : iso;
+  }
+
   const [dia, mes, resto] = cru.split("/");
   if (!dia || !mes || !resto) return null;
   const [ano, hora = "00:00:00"] = resto.split(" ");
