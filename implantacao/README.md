@@ -47,8 +47,14 @@ npm run build
 systemctl restart estoque
 ```
 
-A ordem importa: `migrate deploy` aplica a migração mas **não** regenera o
-cliente Prisma — é a armadilha que já custou uma sessão inteira neste projeto.
+A ordem importa, e não é decorativa: `migrate deploy` aplica a migração mas
+**não** regenera o cliente Prisma. Rodando `npm run build` antes do `generate`,
+o TypeScript não enxerga os campos novos e a compilação falha com
+`Property 'x' does not exist on type` — parece erro de código, é ordem de
+comando. Já aconteceu duas vezes neste projeto.
+
+O build falhar não derruba o que está no ar: o serviço continua servindo a
+versão anterior até o `systemctl restart`.
 
 ---
 
