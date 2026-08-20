@@ -244,6 +244,21 @@ export function FormularioResponsavel({
   tecnicoId: string | null;
   tecnicos: { id: string; nome: string; equipe: string | null }[];
 }) {
+  // 3.67 — a lista vazia é o caso do primeiro dia: base nova, ninguém
+  // cadastrado ainda. Um seletor com uma opção morta faz parecer defeito.
+  if (tecnicos.length === 0) {
+    return (
+      <Aviso tom="atencao" titulo="Nenhum técnico cadastrado">
+        Só é possível atribuir uma OS depois de cadastrar quem atende. O
+        cadastro fica em{" "}
+        <Link href="/configuracoes" className="font-medium underline">
+          Configurações → Técnicos
+        </Link>
+        .
+      </Aviso>
+    );
+  }
+
   return (
     <FormularioAcao acao={acaoAtribuirOrdem} className="space-y-3">
       <input type="hidden" name="ordemId" value={ordemId} />

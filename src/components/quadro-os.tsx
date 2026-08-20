@@ -193,19 +193,37 @@ export function QuadroOS({
 
                   <div className="mt-2 flex items-center gap-1.5 border-t border-[var(--borda)] pt-2">
                     <User className="size-3 shrink-0 text-[var(--texto-3)]" aria-hidden />
-                    <select
-                      value={cartao.tecnicoId ?? ""}
-                      onChange={(evento) => atribuir(cartao.id, evento.target.value)}
-                      className="min-w-0 flex-1 !py-1 !text-xs"
-                      aria-label={`Responsável pela OS ${cartao.numero}`}
-                    >
-                      <option value="">sem responsável</option>
-                      {tecnicos.map((tecnico) => (
-                        <option key={tecnico.id} value={tecnico.id}>
-                          {tecnico.nome}
-                        </option>
-                      ))}
-                    </select>
+                    {/*
+                      Seletor vazio não explica nada: quem abre o quadro numa
+                      base recém-criada vê "sem responsável" como única opção e
+                      conclui que o sistema está filtrando alguém. Sem técnico
+                      cadastrado, a tela diz isso e leva ao cadastro.
+                    */}
+                    {tecnicos.length === 0 ? (
+                      <span className="text-[11px] text-[var(--texto-3)]">
+                        Nenhum técnico cadastrado —{" "}
+                        <Link
+                          href="/configuracoes"
+                          className="font-medium text-[var(--acento)] hover:underline"
+                        >
+                          cadastrar
+                        </Link>
+                      </span>
+                    ) : (
+                      <select
+                        value={cartao.tecnicoId ?? ""}
+                        onChange={(evento) => atribuir(cartao.id, evento.target.value)}
+                        className="min-w-0 flex-1 !py-1 !text-xs"
+                        aria-label={`Responsável pela OS ${cartao.numero}`}
+                      >
+                        <option value="">sem responsável</option>
+                        {tecnicos.map((tecnico) => (
+                          <option key={tecnico.id} value={tecnico.id}>
+                            {tecnico.nome}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   {/* alternativa ao arrastar, para toque e teclado */}

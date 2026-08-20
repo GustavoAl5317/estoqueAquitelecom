@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { User } from "lucide-react";
 import { acaoAtribuirOrdem } from "@/app/acoes/operacao";
 
@@ -37,6 +38,23 @@ export function AtribuirTecnico({
       if (resultado.erro) setErro(resultado.erro);
       else router.refresh();
     });
+  }
+
+  // sem ninguém cadastrado o seletor não teria o que oferecer — dizer isso
+  // vale mais do que uma lista com uma opção morta
+  if (tecnicos.length === 0) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-[var(--texto-3)]">
+        <User className="size-3.5 shrink-0" aria-hidden />
+        Nenhum técnico cadastrado —{" "}
+        <Link
+          href="/configuracoes"
+          className="font-medium text-[var(--acento)] hover:underline"
+        >
+          cadastrar
+        </Link>
+      </span>
+    );
   }
 
   return (
