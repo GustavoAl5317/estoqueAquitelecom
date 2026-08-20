@@ -5,6 +5,7 @@ import { severidadeInicial } from "./severidade";
 import { bairroDaCoordenada } from "./regioes";
 import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import { normalizar } from "@/lib/utils";
+import { STATUS_OS_ENCERRADOS } from "@/lib/dominio";
 
 /**
  * 2.1 a 2.3 — SINCRONIZAÇÃO COM O SGP.
@@ -340,24 +341,45 @@ export async function sincronizarContratos(
          */
         const adotarTecnico =
           tecnicoSgp && !existente.tecnicoId
-            ? {
-                tecnicoId: tecnicoSgp.id,
-                status: existente.status === "ABERTA" ? "ATRIBUIDA" : comum.status,
-              }
+            ? { tecnicoId: tecnicoSgp.id }
             : {};
+
+        /*
+         * O andamento é daqui; o encerramento é do SGP.
+         *
+         * O SGP mantém a OS como "Aberta" durante todo o atendimento — quem
+         * registra deslocamento, chegada e atendimento é esta plataforma.
+         * Copiar o status a cada rodada devolvia o cartão para "Aberta" e
+         * desfazia o trabalho do supervisor umas quatro vezes por hora.
+         *
+         * Então: fechamento e cancelamento vindos do SGP sempre valem; no
+         * resto, o andamento local só cede se ainda não tiver saído do lugar.
+         */
+        const encerradoNoSgp = STATUS_OS_ENCERRADOS.includes(status);
+        const andamentoLocal = !["ABERTA", ...STATUS_OS_ENCERRADOS].includes(
+          existente.status,
+        );
+
+        const statusFinal = encerradoNoSgp
+          ? status
+          : andamentoLocal
+            ? existente.status
+            : tecnicoSgp || existente.tecnicoId
+              ? "ATRIBUIDA"
+              : status;
 
         await prisma.ordemServico.update({
           where: { id: existente.id },
-          data: { ...comum, ...adotarTecnico },
+          data: { ...comum, ...adotarTecnico, status: statusFinal },
         });
         resultado.atualizadas += 1;
 
-        if (existente.status !== status) {
+        if (existente.status !== statusFinal) {
           await registrarEvento({
             ordemServicoId: existente.id,
             tipo: "STATUS",
             descricao: `Sincronização do SGP: ${texto(chamado.os_status_descricao) || "sem status"}.`,
-            status,
+            status: statusFinal,
             usuarioId: opcoes.usuarioId ?? null,
           });
         }
