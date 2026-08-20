@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -189,8 +190,56 @@ export function NavegacaoLateral({ capacidades }: { capacidades: Capacidade[] })
   );
 }
 
+/**
+ * O painel sai por um portal, e não de onde o botão está.
+ *
+ * O cabeçalho usa `backdrop-blur`, e `backdrop-filter` cria bloco de contenção
+ * para descendentes `fixed` — do mesmo jeito que `transform`. O menu, que pede
+ * a tela inteira, ficava preso à altura do cabeçalho: uma faixa de uns cinquenta
+ * pixels sobre o conteúdo, sem rolagem possível. Ancorar no `body` devolve o
+ * `fixed` à viewport.
+ */
 export function NavegacaoMovel({ capacidades }: { capacidades: Capacidade[] }) {
   const [aberto, setAberto] = useState(false);
+  const [montado, setMontado] = useState(false);
+
+  useEffect(() => setMontado(true), []);
+
+  // com o menu aberto, quem rola é o menu — não a página atrás dele
+  useEffect(() => {
+    if (!aberto) return;
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = anterior;
+    };
+  }, [aberto]);
+
+  const painel = (
+    <div className="fixed inset-0 z-50 lg:hidden">
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => setAberto(false)}
+        aria-hidden
+      />
+      <div className="absolute inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col bg-[var(--superficie)] shadow-[var(--sombra-alta)]">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--borda)] pr-2">
+          <Marca />
+          <button
+            type="button"
+            onClick={() => setAberto(false)}
+            className="grid size-8 place-items-center rounded-lg"
+            aria-label="Fechar menu"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <Itens capacidades={capacidades} aoNavegar={() => setAberto(false)} />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -203,32 +252,7 @@ export function NavegacaoMovel({ capacidades }: { capacidades: Capacidade[] }) {
         <Menu className="size-4" />
       </button>
 
-      {aberto && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setAberto(false)}
-            aria-hidden
-          />
-          <div className="absolute inset-y-0 left-0 w-64 overflow-y-auto bg-[var(--superficie)] shadow-[var(--sombra-alta)]">
-            <div className="flex items-center justify-between border-b border-[var(--borda)] pr-2">
-              <Marca />
-              <button
-                type="button"
-                onClick={() => setAberto(false)}
-                className="grid size-8 place-items-center rounded-lg"
-                aria-label="Fechar menu"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-            <Itens
-              capacidades={capacidades}
-              aoNavegar={() => setAberto(false)}
-            />
-          </div>
-        </div>
-      )}
+      {aberto && montado && createPortal(painel, document.body)}
     </>
   );
 }
