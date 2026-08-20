@@ -64,6 +64,27 @@ async function executar<T>(
   }
 }
 
+/**
+ * Toda tela que oferece um técnico para escolher.
+ *
+ * `revalidatePath` não é opcional aqui: as páginas são `force-dynamic`, mas o
+ * cache de rotas do cliente guarda o payload já renderizado. Sem invalidar,
+ * quem acabou de cadastrar um técnico continua vendo a lista vazia que existia
+ * antes — e conclui que o cadastro não funcionou.
+ */
+const TELAS_COM_TECNICO = [
+  "/locais",
+  "/configuracoes",
+  "/os",
+  "/os/quadro",
+  "/os/nova",
+  "/fila",
+  "/decisao",
+  "/roteiro",
+  "/central",
+  "/regioes",
+];
+
 const texto = (v: FormDataEntryValue | null) =>
   typeof v === "string" && v.trim() ? v.trim() : null;
 const decimal = (v: FormDataEntryValue | null) => {
@@ -225,7 +246,7 @@ export async function acaoCriarTecnico(
         },
         usuario.id,
       ),
-    ["/locais"],
+    TELAS_COM_TECNICO,
   );
 }
 
@@ -243,7 +264,7 @@ export async function acaoCriarEquipe(
         },
         usuario.id,
       ),
-    ["/locais"],
+    TELAS_COM_TECNICO,
   );
 }
 
