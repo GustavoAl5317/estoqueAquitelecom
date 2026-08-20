@@ -150,6 +150,7 @@ export default async function QuadroDeOrdens({
         status: ordem.status,
         tecnicoId: ordem.tecnicoId,
         tecnicoNome: ordem.tecnico?.nome ?? null,
+        tecnicoSgpNome: ordem.tecnicoSgpNome,
         situacao: ordem.situacao,
         prazoTexto:
           ordem.situacao === "SEM_PRAZO"

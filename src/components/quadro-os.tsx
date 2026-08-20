@@ -26,6 +26,8 @@ export type CartaoOS = {
   status: string;
   tecnicoId: string | null;
   tecnicoNome: string | null;
+  /** 2.4 — responsável que veio do SGP e ainda não tem cadastro aqui */
+  tecnicoSgpNome: string | null;
   situacao: string;
   prazoTexto: string;
   materiais: number;
@@ -199,7 +201,11 @@ export function QuadroOS({
                       conclui que o sistema está filtrando alguém. Sem técnico
                       cadastrado, a tela diz isso e leva ao cadastro.
                     */}
-                    {tecnicos.length === 0 ? (
+                    {cartao.tecnicoSgpNome && !cartao.tecnicoId ? (
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--texto-3)]">
+                        {cartao.tecnicoSgpNome} · do SGP
+                      </span>
+                    ) : tecnicos.length === 0 ? (
                       <span className="text-[11px] text-[var(--texto-3)]">
                         Nenhum técnico cadastrado —{" "}
                         <Link

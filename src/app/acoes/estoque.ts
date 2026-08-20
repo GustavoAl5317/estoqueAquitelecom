@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  sugerirVinculo,
+  vincularOrdensDoNome,
+} from "@/lib/servicos/vinculo-tecnico";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { usuarioAtual } from "@/lib/sessao";
@@ -230,16 +234,45 @@ export async function acaoAtualizarEstoque(
   );
 }
 
+/**
+ * 2.4 — cadastrar técnico recolhe as OS que já eram dele.
+ *
+ * A OS quase sempre chega do SGP antes de o técnico existir aqui, carregando
+ * o nome do responsável como texto. Cadastrar sem olhar para isso deixaria o
+ * trabalho dele órfão na fila e exigiria atribuição manual, uma a uma.
+ *
+ * Nome igual vincula direto. Nome parecido devolve uma pergunta em vez de
+ * decidir: reatribuir OS por semelhança é escolha de gente, não de heurística.
+ */
+export type ResultadoTecnico = Resultado & {
+  /** pergunta de nome parecido, quando o sistema não quer decidir sozinho */
+  confirmar?: { nome: string; abertas: number; total: number };
+  /** quantas OS do SGP passaram a ser deste técnico */
+  vinculadas?: number;
+};
+
 export async function acaoCriarTecnico(
-  _estado: Resultado,
+  _estado: ResultadoTecnico,
   dados: FormData,
-): Promise<Resultado> {
+): Promise<ResultadoTecnico> {
   const usuario = await usuarioAtual();
-  return executar(
+  const nome = String(dados.get("nome") ?? "").trim();
+
+  // veio do "sim" da pergunta de nome parecido
+  const nomeConfirmado = texto(dados.get("vincularNome"));
+
+  if (nome && !nomeConfirmado) {
+    const { exato, parecidos } = await sugerirVinculo(nome);
+    if (!exato && parecidos.length === 1) {
+      return { confirmar: parecidos[0] };
+    }
+  }
+
+  const resultado = await executar(
     () =>
       criarTecnico(
         {
-          nome: String(dados.get("nome") ?? "").trim(),
+          nome,
           matricula: String(dados.get("matricula") ?? "").trim(),
           telefone: texto(dados.get("telefone")),
           equipeId: texto(dados.get("equipeId")),
@@ -248,6 +281,16 @@ export async function acaoCriarTecnico(
       ),
     TELAS_COM_TECNICO,
   );
+
+  if (resultado.ok && resultado.dados) {
+    // "-" é o "não, é outra pessoa": cadastra sem recolher OS de ninguém
+    const alvo = nomeConfirmado === "-" ? nome : nomeConfirmado || nome;
+    const { vinculadas } = await vincularOrdensDoNome(resultado.dados.id, alvo);
+    for (const caminho of TELAS_COM_TECNICO) revalidatePath(caminho);
+    return { ...resultado, vinculadas };
+  }
+
+  return resultado;
 }
 
 export async function acaoCriarEquipe(

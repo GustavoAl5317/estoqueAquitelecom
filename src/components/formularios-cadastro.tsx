@@ -1,5 +1,7 @@
 "use client";
 
+import { useActionState, useEffect, useState } from "react";
+
 import { PAPEL_USUARIO, TIPO_ESTOQUE, TIPOS_ESTOQUE_SISTEMA } from "@/lib/dominio";
 import {
   acaoCriarCategoria,
@@ -10,8 +12,9 @@ import {
   acaoSalvarLimiares,
 } from "@/app/acoes/estoque";
 import type { Limiares } from "@/lib/servicos/consultas";
-import { Aviso, Campo } from "./ui";
+import { Aviso, Botao, Campo } from "./ui";
 import { BotaoEnviar, FormularioAcao } from "./formulario";
+import type { ResultadoTecnico } from "@/app/acoes/estoque";
 
 /** 1.16 — as faixas de criticidade são configuráveis. */
 export function FormularioLimiares({ atuais }: { atuais: Limiares }) {
@@ -144,22 +147,111 @@ export function FormularioEstoque({
   );
 }
 
+/**
+ * 2.4 — cadastrar o técnico e recolher as OS que já eram dele.
+ *
+ * A OS chega do SGP antes de o técnico existir aqui, trazendo o responsável
+ * como texto. Se o nome bater, o vínculo é automático. Se for parecido —
+ * "Lucas Souza" contra "Lucas de Souza" — a tela pergunta, porque reatribuir
+ * o trabalho de alguém por semelhança de nome é decisão de gente.
+ *
+ * Os campos são controlados porque a pergunta passa pelo servidor: sem isso, o
+ * que a pessoa digitou sumiria ao voltar com a confirmação.
+ */
 export function FormularioTecnico({
   equipes,
 }: {
   equipes: { id: string; nome: string }[];
 }) {
+  const [estado, enviar] = useActionState<ResultadoTecnico, FormData>(
+    acaoCriarTecnico,
+    {},
+  );
+
+  const [nome, setNome] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [equipeId, setEquipeId] = useState("");
+  const [confirmado, setConfirmado] = useState("");
+
+  useEffect(() => {
+    if (estado.ok) {
+      setNome("");
+      setMatricula("");
+      setTelefone("");
+      setEquipeId("");
+      setConfirmado("");
+    }
+  }, [estado.ok]);
+
   return (
-    <FormularioAcao acao={acaoCriarTecnico} className="space-y-3">
+    <form action={enviar} className="space-y-3">
+      {estado.erro && (
+        <Aviso tom="critico" titulo="Não foi possível concluir">
+          {estado.erro}
+        </Aviso>
+      )}
+
+      {estado.ok && (
+        <Aviso tom="positivo">
+          Técnico cadastrado
+          {estado.vinculadas
+            ? ` — ${estado.vinculadas} OS do SGP passaram a ser dele.`
+            : "."}
+        </Aviso>
+      )}
+
+      {estado.confirmar && (
+        <Aviso tom="atencao" titulo="É a mesma pessoa?">
+          O SGP tem <strong>{estado.confirmar.abertas}</strong> OS aberta(s) sob
+          o nome <strong>{estado.confirmar.nome}</strong> (
+          {estado.confirmar.total} no total). O técnico que você está
+          cadastrando é essa pessoa?
+          <span className="mt-2 flex flex-wrap gap-2">
+            <Botao
+              type="submit"
+              variante="primario"
+              onClick={() => setConfirmado(estado.confirmar!.nome)}
+            >
+              Sim, é a mesma pessoa
+            </Botao>
+            <Botao
+              type="submit"
+              variante="sutil"
+              onClick={() => setConfirmado("-")}
+            >
+              Não, é outra pessoa
+            </Botao>
+          </span>
+        </Aviso>
+      )}
+
+      <input type="hidden" name="vincularNome" value={confirmado} />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <Campo rotulo="Nome" obrigatorio>
-          <input name="nome" required />
+          <input
+            name="nome"
+            required
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+          />
         </Campo>
         <Campo rotulo="Matrícula" obrigatorio>
-          <input name="matricula" required placeholder="T-006" />
+          <input
+            name="matricula"
+            required
+            placeholder="T-006"
+            value={matricula}
+            onChange={(e) => setMatricula(e.target.value)}
+          />
         </Campo>
         <Campo rotulo="Telefone">
-          <input name="telefone" />
+          <input
+            name="telefone"
+            value={telefone}
+            onChange={(e) => setTelefone(e.target.value)}
+          />
         </Campo>
         <Campo
           rotulo="Equipe"
@@ -169,7 +261,11 @@ export function FormularioTecnico({
               : undefined
           }
         >
-          <select name="equipeId" defaultValue="">
+          <select
+            name="equipeId"
+            value={equipeId}
+            onChange={(e) => setEquipeId(e.target.value)}
+          >
             <option value="">Sem equipe</option>
             {equipes.map((equipe) => (
               <option key={equipe.id} value={equipe.id}>
@@ -179,8 +275,11 @@ export function FormularioTecnico({
           </select>
         </Campo>
       </div>
-      <BotaoEnviar variante="secundario">Criar técnico</BotaoEnviar>
-    </FormularioAcao>
+
+      {!estado.confirmar && (
+        <BotaoEnviar variante="secundario">Criar técnico</BotaoEnviar>
+      )}
+    </form>
   );
 }
 

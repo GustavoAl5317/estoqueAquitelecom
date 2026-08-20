@@ -321,6 +321,8 @@ export async function sincronizarContratos(
         codigoCliente: String(chamado.cliente_id ?? ""),
         contrato: String(chamado.contrato_id ?? ""),
         cidade: chamado.contrato_pop?.trim() || null,
+        // guardado mesmo sem técnico cadastrado: o dado é do SGP (2.4)
+        tecnicoSgpNome: texto(chamado.os_tecnico_responsavel) || null,
         latitude,
         longitude,
         ...(bairro ? { bairroId: bairro.id, bairroNome: bairro.nome } : {}),

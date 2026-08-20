@@ -329,9 +329,24 @@ export default async function OrdensDeServico({
                         </Etiqueta>
                       </Td>
                       <Td className="text-sm">
-                        {ordem.tecnico?.nome ?? (
-                          <span className="text-[var(--atencao)]">sem responsável</span>
-                        )}
+                        {/*
+                          2.4 — o nome que veio do SGP vale como responsável
+                          mesmo sem cadastro aqui. Some quando o técnico for
+                          cadastrado e a OS for vinculada a ele.
+                        */}
+                        {ordem.tecnico?.nome ??
+                          (ordem.tecnicoSgpNome ? (
+                            <span>
+                              {ordem.tecnicoSgpNome}
+                              <span className="block text-[11px] text-[var(--texto-3)]">
+                                do SGP · sem cadastro aqui
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-[var(--atencao)]">
+                              sem responsável
+                            </span>
+                          ))}
                       </Td>
                       <Td>
                         <Etiqueta tom={SITUACAO_SLA.tom(ordem.situacao)}>

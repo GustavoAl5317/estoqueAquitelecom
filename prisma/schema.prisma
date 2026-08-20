@@ -518,6 +518,7 @@ model Reserva {
   equipe    Equipe?  @relation(fields: [equipeId], references: [id])
   equipeId  String?
 
+
   ordemServico   OrdemServico? @relation(fields: [ordemServicoId], references: [id])
   ordemServicoId String?
 
@@ -684,6 +685,13 @@ model OrdemServico {
   tecnicoId String?
   equipe    Equipe?  @relation(fields: [equipeId], references: [id])
   equipeId  String?
+  /// 2.4 — o responsável como o SGP escreveu, texto livre e sem id.
+  ///
+  /// Guardado sempre, mesmo quando não existe técnico cadastrado com esse
+  /// nome: a informação é do SGP e não se perde por falta de cadastro daqui.
+  /// Quando o técnico for cadastrado, este campo é o que permite encontrar as
+  /// OS que já eram dele e vinculá-las de uma vez.
+  tecnicoSgpNome String?
 
   bairro   Bairro? @relation(fields: [bairroId], references: [id])
   bairroId String?
