@@ -228,8 +228,21 @@ export type FiltroOrdens = {
   busca?: string;
   /** só as que estouraram ou estão perto de estourar o prazo */
   somenteRisco?: boolean;
+  /** abertas a partir desta data (inclusive), pelo campo abertaEm */
+  desde?: Date;
+  /** abertas até esta data (inclusive) */
+  ate?: Date;
   limite?: number;
 };
+
+/** o intervalo do dia inteiro, no fuso do servidor — usado pelo atalho "Hoje" */
+export function intervaloDoDia(data = new Date()) {
+  const inicio = new Date(data);
+  inicio.setHours(0, 0, 0, 0);
+  const fim = new Date(inicio);
+  fim.setDate(fim.getDate() + 1);
+  return { desde: inicio, ate: fim };
+}
 
 const INCLUSAO_PADRAO = {
   tecnico: { select: { id: true, nome: true, status: true } },
@@ -253,6 +266,10 @@ export async function listarOrdens(filtro: FiltroOrdens = {}) {
       bairroId: filtro.bairroId || undefined,
       prioridade: filtro.prioridade || undefined,
       tipo: filtro.tipo || undefined,
+      abertaEm:
+        filtro.desde || filtro.ate
+          ? { gte: filtro.desde, lt: filtro.ate }
+          : undefined,
       ...(busca
         ? {
             OR: [

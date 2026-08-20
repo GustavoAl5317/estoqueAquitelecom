@@ -11,6 +11,7 @@ import {
 import {
   cargaPorTecnico,
   indicadoresOrdens,
+  intervaloDoDia,
   listarOrdens,
   prazoLegivel,
 } from "@/lib/servicos/ordens";
@@ -49,11 +50,24 @@ export default async function OrdensDeServico({
     tipo?: string;
     q?: string;
     risco?: string;
+    periodo?: string;
   }>;
 }) {
   const filtros = await searchParams;
 
   const usuario = await usuarioAtual();
+
+  // "hoje" é o atalho que a operação mais usa — focar no que abriu no dia
+  const periodo =
+    filtros.periodo === "hoje" || filtros.periodo === "7" || filtros.periodo === "30"
+      ? filtros.periodo
+      : "";
+  const janela =
+    periodo === "hoje"
+      ? intervaloDoDia()
+      : periodo === "7" || periodo === "30"
+        ? { desde: new Date(Date.now() - Number(periodo) * 86_400_000), ate: undefined }
+        : {};
 
   const [ordens, indicadores, carga, tecnicos, visoes] = await Promise.all([
     listarOrdens({
@@ -63,6 +77,7 @@ export default async function OrdensDeServico({
       tipo: filtros.tipo,
       busca: filtros.q,
       somenteRisco: filtros.risco === "1",
+      ...janela,
     }),
     indicadoresOrdens(),
     cargaPorTecnico(),
@@ -80,7 +95,8 @@ export default async function OrdensDeServico({
       filtros.prioridade ||
       filtros.tipo ||
       filtros.q ||
-      filtros.risco,
+      filtros.risco ||
+      periodo,
   );
 
   return (
@@ -144,7 +160,7 @@ export default async function OrdensDeServico({
       </div>
 
       <Cartao className="mb-4">
-        <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <form className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
           <input
             type="search"
             name="q"
@@ -175,6 +191,12 @@ export default async function OrdensDeServico({
                 {tecnico.nome}
               </option>
             ))}
+          </select>
+          <select name="periodo" defaultValue={periodo}>
+            <option value="">Qualquer data</option>
+            <option value="hoje">Abertas hoje</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
           </select>
           <div className="flex gap-2">
             <button

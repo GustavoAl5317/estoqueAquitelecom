@@ -2,6 +2,7 @@ import Link from "next/link";
 import { List, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import {
+  intervaloDoDia,
   prazoLegivel,
   quadroPorRecorte,
   type RecorteQuadro,
@@ -45,17 +46,30 @@ export default async function QuadroDeOrdens({
     tecnicoId?: string;
     prioridade?: string;
     recorte?: string;
+    periodo?: string;
   }>;
 }) {
   const filtros = await searchParams;
   const recorte = (RECORTES.find((r) => r.valor === filtros.recorte)?.valor ??
     "STATUS") as RecorteQuadro;
 
+  // "hoje" é o que o supervisor mais quer ver batendo o olho de manhã
+  const periodo =
+    filtros.periodo === "hoje" || filtros.periodo === "7" || filtros.periodo === "30"
+      ? filtros.periodo
+      : "";
+  const janela =
+    periodo === "hoje"
+      ? intervaloDoDia()
+      : periodo === "7" || periodo === "30"
+        ? { desde: new Date(Date.now() - Number(periodo) * 86_400_000) }
+        : {};
+
   const usuario = await usuarioAtual();
 
   const [faixas, tecnicos, visoes] = await Promise.all([
     quadroPorRecorte(
-      { tecnicoId: filtros.tecnicoId, prioridade: filtros.prioridade },
+      { tecnicoId: filtros.tecnicoId, prioridade: filtros.prioridade, ...janela },
       recorte,
     ),
     prisma.tecnico.findMany({
@@ -145,13 +159,19 @@ export default async function QuadroDeOrdens({
             <option value="P3">P3 — Normal</option>
             <option value="P4">P4 — Baixa</option>
           </select>
+          <select name="periodo" defaultValue={periodo}>
+            <option value="">Qualquer data</option>
+            <option value="hoje">Abertas hoje</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+          </select>
           <button
             type="submit"
             className="rounded-lg bg-[var(--acento)] px-3 py-1.5 text-sm font-medium text-white"
           >
             Filtrar
           </button>
-          {(filtros.tecnicoId || filtros.prioridade || filtros.recorte) && (
+          {(filtros.tecnicoId || filtros.prioridade || filtros.recorte || periodo) && (
             <Link
               href="/os/quadro"
               className="rounded-lg px-3 py-1.5 text-sm text-[var(--texto-2)]"

@@ -162,10 +162,6 @@ export default async function MeuDia() {
           <p className="mt-2 text-lg font-semibold">
             {atual.cliente ?? "Cliente não informado"}
           </p>
-          <p className="text-sm text-[var(--texto-2)]">
-            {TIPO_OS.rotulo(atual.tipo)}
-            {atual.titulo ? ` — ${atual.titulo}` : ""}
-          </p>
 
           {(atual.endereco || atual.bairro) && (
             <p className="mt-1 flex items-start gap-1.5 text-sm text-[var(--texto-2)]">
@@ -177,34 +173,8 @@ export default async function MeuDia() {
             </p>
           )}
 
-          {atual.descricao && (
-            <p className="mt-2 rounded-lg bg-[var(--superficie-2)] p-3 text-sm text-[var(--texto-2)]">
-              {atual.descricao}
-            </p>
-          )}
-
-          {atual.materiaisPrevistos.length > 0 && (
-            <div className="mt-3">
-              <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--texto-2)]">
-                <Package className="size-3.5" aria-hidden /> Material previsto
-              </p>
-              <ul className="flex flex-wrap gap-1.5">
-                {atual.materiaisPrevistos.map((previsto) => (
-                  <li key={previsto.id}>
-                    <Etiqueta tom="neutro">
-                      {quantidade(
-                        previsto.quantidade,
-                        previsto.material.unidadeMedida,
-                      )}{" "}
-                      {previsto.material.nome}
-                    </Etiqueta>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="mt-4">
+          {/* a ação vem logo em seguida — é o que a pessoa veio fazer aqui */}
+          <div className="mt-3">
             <PassoDoAtendimento
               ordemId={atual.id}
               status={atual.status}
@@ -212,6 +182,43 @@ export default async function MeuDia() {
               longitude={atual.longitude}
             />
           </div>
+
+          {/* detalhe é leitura extra, não bloqueia quem só quer agir */}
+          {(atual.descricao || atual.materiaisPrevistos.length > 0) && (
+            <details className="mt-3 border-t border-[var(--borda)] pt-3">
+              <summary className="cursor-pointer text-xs font-semibold text-[var(--texto-2)]">
+                {TIPO_OS.rotulo(atual.tipo)}
+                {atual.titulo ? ` — ${atual.titulo}` : ""} · mais detalhes
+              </summary>
+
+              {atual.descricao && (
+                <p className="mt-2 rounded-lg bg-[var(--superficie-2)] p-3 text-sm text-[var(--texto-2)]">
+                  {atual.descricao}
+                </p>
+              )}
+
+              {atual.materiaisPrevistos.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--texto-2)]">
+                    <Package className="size-3.5" aria-hidden /> Material previsto
+                  </p>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {atual.materiaisPrevistos.map((previsto) => (
+                      <li key={previsto.id}>
+                        <Etiqueta tom="neutro">
+                          {quantidade(
+                            previsto.quantidade,
+                            previsto.material.unidadeMedida,
+                          )}{" "}
+                          {previsto.material.nome}
+                        </Etiqueta>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </details>
+          )}
         </Cartao>
       )}
 
@@ -232,29 +239,30 @@ export default async function MeuDia() {
                   );
                   return (
                     <li key={ordem.id} className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/os/${ordem.id}`}
-                          className="font-mono text-xs font-semibold hover:text-[var(--acento)]"
-                        >
-                          {ordem.numero}
-                        </Link>
-                        <Etiqueta tom={PRIORIDADE_OS.tom(ordem.prioridade)}>
-                          {ordem.prioridade}
-                        </Etiqueta>
-                        <Etiqueta tom={STATUS_OS.tom(ordem.status)} ponto>
-                          {STATUS_OS.rotulo(ordem.status)}
-                        </Etiqueta>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Link
+                            href={`/os/${ordem.id}`}
+                            className="font-mono text-xs font-semibold hover:text-[var(--acento)]"
+                          >
+                            {ordem.numero}
+                          </Link>
+                          <span className="truncate text-sm">
+                            {ordem.cliente ?? "Cliente não informado"}
+                          </span>
+                        </span>
+                        {ordem.prioridade === "P1" && (
+                          <Etiqueta tom={PRIORIDADE_OS.tom(ordem.prioridade)}>
+                            {ordem.prioridade}
+                          </Etiqueta>
+                        )}
+                      </div>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--texto-3)]">
                         <Etiqueta tom={SITUACAO_SLA.tom(ordem.situacao)}>
                           {ordem.situacao === "SEM_PRAZO"
                             ? "sem prazo"
                             : prazoLegivel(ordem.minutosRestantes)}
                         </Etiqueta>
-                      </div>
-                      <p className="mt-0.5 text-sm">
-                        {ordem.cliente ?? "Cliente não informado"}
-                      </p>
-                      <p className="text-xs text-[var(--texto-3)]">
                         {ordem.bairro?.nome ?? ordem.endereco ?? "sem endereço"}
                         {parada && ` · ${numero(parada.trechoKm, 1)} km`}
                         {parada && ` · chegada ~${hora(parada.chegadaPrevista)}`}

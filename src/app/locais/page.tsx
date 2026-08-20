@@ -13,12 +13,13 @@ import {
   Th,
   Vazio,
 } from "@/components/ui";
+import { FormularioEstoque } from "@/components/formularios-cadastro";
 
 export const dynamic = "force-dynamic";
 
 /** 1.1 / 1.8 / 1.9 — todo mundo que pode deter material, no mesmo lugar. */
 export default async function Locais() {
-  const [detentores, saldos] = await Promise.all([
+  const [detentores, saldos, usuarios] = await Promise.all([
     prisma.detentor.findMany({
       include: {
         estoque: { include: { responsavel: true } },
@@ -31,6 +32,7 @@ export default async function Locais() {
       where: { quantidade: { gt: 0 } },
       include: { material: { select: { valorMedio: true } } },
     }),
+    prisma.usuario.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
   ]);
 
   const resumo = new Map<string, { itens: number; valor: number; linhas: number }>();
@@ -83,6 +85,17 @@ export default async function Locais() {
         titulo="Locais e detentores"
         descricao="Estoques físicos, técnicos e equipes — todos podem deter material, e o sistema sabe exatamente quanto cada um tem."
       />
+
+      {/* origem/destino de uma movimentação é sempre um destes locais — cadastre aqui */}
+      <Cartao
+        titulo="Novo local de estoque"
+        descricao="É este cadastro que aparece como Origem e Destino nas movimentações."
+        className="mb-4"
+      >
+        <FormularioEstoque
+          usuarios={usuarios.map((u) => ({ id: u.id, nome: u.nome, papel: u.papel }))}
+        />
+      </Cartao>
 
       <div className="space-y-4">
         {grupos.map((grupo) =>

@@ -23,7 +23,9 @@ import {
 } from "@/components/ui";
 import { AcaoRapida } from "@/components/formulario";
 import { VisoesSalvas } from "@/components/visoes-salvas";
+import { AtribuirTecnico } from "@/components/atribuir-tecnico";
 import { acaoAtribuirOrdem } from "@/app/acoes/operacao";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +46,16 @@ export default async function Fila({
 
   const usuario = await usuarioAtual();
 
-  const [fila, leitura, config, visoes] = await Promise.all([
+  const [fila, leitura, config, visoes, tecnicos] = await Promise.all([
     filaInteligente({ limite: 40, somenteSemResponsavel }),
     leituraDaOperacao(),
     parametros(),
     visoesParaTela("/fila", usuario.id),
+    prisma.tecnico.findMany({
+      where: { ativo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    }),
   ]);
 
   const comRecomendacao = fila.filter((i) => i.candidatos.length > 0).length;
@@ -275,6 +282,14 @@ export default async function Fila({
                       ))}
                     </ul>
                   )}
+
+                  <div className="mt-3">
+                    <AtribuirTecnico
+                      ordemId={item.ordemId}
+                      tecnicoAtualId={item.responsavelAtual?.id ?? null}
+                      tecnicos={tecnicos}
+                    />
+                  </div>
                 </div>
               </Cartao>
             </li>
