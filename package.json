@@ -17,7 +17,8 @@
     "producao": "tsx scripts/iniciar-producao.ts",
     "sgp:sync": "tsx scripts/sgp-sincronizar.ts",
     "sgp": "tsx scripts/sgp-explorar.ts",
-    "traccar": "tsx scripts/traccar.ts"
+    "traccar": "tsx scripts/traccar.ts",
+    "tecnicos:sgp": "tsx scripts/tecnicos-do-sgp.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.9.1",

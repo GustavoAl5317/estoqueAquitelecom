@@ -121,6 +121,8 @@ Filtre a lista (em `/os`, `/os/quadro` ou `/fila`) → clica **"Salvar esta"** n
 Ver `CONTEXTO.md` seção 6 para a lista completa. Os que mais importam no dia a dia:
 
 ```bash
+npm run tecnicos:sgp                  # mostra os responsaveis do SGP sem cadastro
+npm run tecnicos:sgp -- --aplicar     # cadastra e vincula as OS de cada um
 npm run sgp:sync                      # sincroniza OS dos contratos já conhecidos
 npm run sgp:sync -- --de 1 --ate 6000 # varredura ampla, descobre contrato novo
 npm run traccar -- --loop 60          # posição de veículo em loop
