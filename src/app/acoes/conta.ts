@@ -134,6 +134,28 @@ export async function acaoDefinirSenhaDe(
   return { ok: true };
 }
 
+/**
+ * 3.63 — liga o login à pessoa que atende.
+ *
+ * O vínculo mora em `Tecnico.usuarioId`, que é único: um técnico responde por
+ * um login só. Trocar o vínculo solta o anterior em vez de estourar na
+ * restrição — quem mexe aqui está corrigindo cadastro, não burlando nada.
+ */
+async function vincularTecnico(usuarioId: string, tecnicoId: string) {
+  // solta o que estiver preso a este usuário e não for o escolhido
+  await prisma.tecnico.updateMany({
+    where: { usuarioId, ...(tecnicoId ? { id: { not: tecnicoId } } : {}) },
+    data: { usuarioId: null },
+  });
+
+  if (!tecnicoId) return;
+
+  await prisma.tecnico.update({
+    where: { id: tecnicoId },
+    data: { usuarioId },
+  });
+}
+
 export async function acaoSalvarUsuario(
   _estado: Resultado,
   dados: FormData,
@@ -148,6 +170,7 @@ export async function acaoSalvarUsuario(
   const email = String(dados.get("email") ?? "").trim().toLowerCase();
   const papel = String(dados.get("papel") ?? "VISUALIZACAO");
   const ativo = dados.get("ativo") === "on" || dados.get("ativo") === "true";
+  const tecnicoId = String(dados.get("tecnicoId") ?? "");
 
   if (!nome) return { erro: "Informe o nome." };
   if (!email.includes("@")) return { erro: "Informe um e-mail válido." };
@@ -162,11 +185,13 @@ export async function acaoSalvarUsuario(
         where: { id },
         data: { nome, email, papel, ativo },
       });
+      await vincularTecnico(id, tecnicoId);
       if (!ativo) await prisma.sessao.deleteMany({ where: { usuarioId: id } });
     } else {
       const criado = await prisma.usuario.create({
         data: { nome, email, papel, ativo: true, trocarSenha: true },
       });
+      await vincularTecnico(criado.id, tecnicoId);
       const senha = String(dados.get("senha") ?? "");
       if (senha) await definirSenha(criado.id, senha, { obrigarTroca: true });
     }

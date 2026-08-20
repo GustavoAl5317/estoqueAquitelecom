@@ -29,13 +29,27 @@ export const dynamic = "force-dynamic";
 export default async function Usuarios() {
   await exigir("sistema.administrar");
 
-  const usuarios = await prisma.usuario.findMany({
-    include: {
-      tecnico: { select: { id: true, nome: true } },
-      _count: { select: { sessoes: true } },
-    },
-    orderBy: [{ ativo: "desc" }, { nome: "asc" }],
-  });
+  const [usuarios, tecnicosCadastrados] = await Promise.all([
+    prisma.usuario.findMany({
+      include: {
+        tecnico: { select: { id: true, nome: true } },
+        _count: { select: { sessoes: true } },
+      },
+      orderBy: [{ ativo: "desc" }, { nome: "asc" }],
+    }),
+    prisma.tecnico.findMany({
+      where: { ativo: true },
+      select: { id: true, nome: true, usuarioId: true },
+      orderBy: { nome: "asc" },
+    }),
+  ]);
+
+  // "livre" é o que ainda não responde por nenhum login
+  const tecnicos = tecnicosCadastrados.map((t) => ({
+    id: t.id,
+    nome: t.nome,
+    livre: t.usuarioId === null,
+  }));
 
   const semSenha = usuarios.filter((u) => u.ativo && !u.senhaHash);
   const administradores = usuarios.filter(
@@ -150,7 +164,9 @@ export default async function Usuarios() {
                           email: usuario.email,
                           papel: usuario.papel,
                           ativo: usuario.ativo,
+                          tecnicoId: usuario.tecnico?.id ?? null,
                         }}
+                        tecnicos={tecnicos}
                       />
                     </Td>
                   </Linha>
@@ -162,7 +178,7 @@ export default async function Usuarios() {
 
         <div className="space-y-4">
           <Cartao titulo="Novo usuário">
-            <NovoUsuario />
+            <NovoUsuario tecnicos={tecnicos} />
           </Cartao>
 
           <Cartao titulo="O que cada perfil alcança">

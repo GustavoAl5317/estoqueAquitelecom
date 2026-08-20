@@ -13,9 +13,24 @@ type UsuarioEditavel = {
   email: string;
   papel: string;
   ativo: boolean;
+  /** técnico já vinculado a este usuário, quando houver */
+  tecnicoId?: string | null;
 };
 
-function CamposUsuario({ usuario }: { usuario?: UsuarioEditavel }) {
+/** técnicos que podem ser vinculados: os livres mais o já ligado a este usuário */
+export type TecnicoVinculavel = { id: string; nome: string; livre: boolean };
+
+function CamposUsuario({
+  usuario,
+  tecnicos,
+}: {
+  usuario?: UsuarioEditavel;
+  tecnicos: TecnicoVinculavel[];
+}) {
+  const disponiveis = tecnicos.filter(
+    (t) => t.livre || t.id === usuario?.tecnicoId,
+  );
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Campo rotulo="Nome" obrigatorio>
@@ -54,18 +69,42 @@ function CamposUsuario({ usuario }: { usuario?: UsuarioEditavel }) {
           <input name="senha" type="password" minLength={8} required />
         </Campo>
       )}
+
+      {/*
+        3.63 — sem este vínculo a tela "Meu dia" não tem o que mostrar, e o
+        aviso que ela exibe manda procurar um administrador. Faltava ao
+        administrador o lugar de fazer o vínculo.
+      */}
+      <Campo
+        rotulo="Técnico vinculado"
+        className="sm:col-span-2"
+        dica={
+          disponiveis.length === 0
+            ? "Nenhum técnico livre. Cadastre em Configurações → Técnicos."
+            : "Liga o login à pessoa que atende — é o que faz a tela “Meu dia” funcionar."
+        }
+      >
+        <select name="tecnicoId" defaultValue={usuario?.tecnicoId ?? ""}>
+          <option value="">Sem vínculo</option>
+          {disponiveis.map((tecnico) => (
+            <option key={tecnico.id} value={tecnico.id}>
+              {tecnico.nome}
+            </option>
+          ))}
+        </select>
+      </Campo>
     </div>
   );
 }
 
-export function NovoUsuario() {
+export function NovoUsuario({ tecnicos }: { tecnicos: TecnicoVinculavel[] }) {
   return (
     <FormularioAcao
       acao={acaoSalvarUsuario}
       className="space-y-3"
       aoConcluir={<Aviso tom="positivo">Usuário criado.</Aviso>}
     >
-      <CamposUsuario />
+      <CamposUsuario tecnicos={tecnicos} />
       <BotaoEnviar>
         <Plus className="size-4" aria-hidden /> Criar usuário
       </BotaoEnviar>
@@ -77,7 +116,13 @@ export function NovoUsuario() {
  * Edição e redefinição de senha na própria linha da tabela — abrir uma tela
  * inteira para trocar um perfil é atrito sem contrapartida.
  */
-export function LinhaUsuario({ usuario }: { usuario: UsuarioEditavel }) {
+export function LinhaUsuario({
+  usuario,
+  tecnicos,
+}: {
+  usuario: UsuarioEditavel;
+  tecnicos: TecnicoVinculavel[];
+}) {
   const [painel, setPainel] = useState<"fechado" | "editar" | "senha">(
     "fechado",
   );
@@ -108,7 +153,7 @@ export function LinhaUsuario({ usuario }: { usuario: UsuarioEditavel }) {
       {painel === "editar" ? (
         <FormularioAcao acao={acaoSalvarUsuario} className="space-y-3">
           <input type="hidden" name="usuarioId" value={usuario.id} />
-          <CamposUsuario usuario={usuario} />
+          <CamposUsuario usuario={usuario} tecnicos={tecnicos} />
           <div className="flex gap-2">
             <BotaoEnviar>Salvar</BotaoEnviar>
             <Botao variante="sutil" onClick={() => setPainel("fechado")}>
