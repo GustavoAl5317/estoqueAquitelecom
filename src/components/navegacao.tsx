@@ -41,6 +41,16 @@ type ItemNav = {
   icone: typeof LayoutDashboard;
   exige: Capacidade;
   exato?: boolean;
+  /**
+   * 3.63 — sobrevive ao enxugamento da tela do técnico.
+   *
+   * O técnico enxerga o estoque e as OS, e por isso herdava treze itens de
+   * menu — dashboard, análise, relatórios, inventário. Na rua, num telefone,
+   * isso é ruído entre ele e o próximo atendimento. Quem tem `os.executar` e
+   * mais nada de supervisão vê só o que usa; a permissão continua a mesma, e
+   * a URL direta continua abrindo.
+   */
+  campo?: boolean;
 };
 
 const GRUPOS: { titulo: string; itens: ItemNav[] }[] = [
@@ -58,19 +68,19 @@ const GRUPOS: { titulo: string; itens: ItemNav[] }[] = [
   {
     titulo: "Campo",
     itens: [
-      { href: "/campo", rotulo: "Meu dia", icone: Hammer, exige: "os.executar" },
-      { href: "/os", rotulo: "Ordens de serviço", icone: ClipboardList, exato: true, exige: "os.ver" },
+      { href: "/campo", rotulo: "Meu dia", icone: Hammer, exige: "os.executar", campo: true },
+      { href: "/os", rotulo: "Ordens de serviço", icone: ClipboardList, exato: true, exige: "os.ver", campo: true },
       { href: "/os/quadro", rotulo: "Quadro operacional", icone: Columns3, exige: "os.ver" },
-      { href: "/os/mapa", rotulo: "Mapa e incidentes", icone: MapPinned, exige: "os.ver" },
-      { href: "/roteiro", rotulo: "Roteiro do dia", icone: Route, exige: "os.ver" },
+      { href: "/os/mapa", rotulo: "Mapa e incidentes", icone: MapPinned, exige: "os.ver", campo: true },
+      { href: "/roteiro", rotulo: "Roteiro do dia", icone: Route, exige: "os.ver", campo: true },
       { href: "/regioes", rotulo: "Regiões e bairros", icone: Map, exige: "operacao.supervisionar" },
     ],
   },
   {
     titulo: "Estoque",
     itens: [
-      { href: "/materiais", rotulo: "Materiais", icone: Boxes, exige: "estoque.ver" },
-      { href: "/seriais", rotulo: "Equipamentos", icone: ScanLine, exige: "estoque.ver" },
+      { href: "/materiais", rotulo: "Materiais", icone: Boxes, exige: "estoque.ver", campo: true },
+      { href: "/seriais", rotulo: "Equipamentos", icone: ScanLine, exige: "estoque.ver", campo: true },
       { href: "/locais", rotulo: "Locais e detentores", icone: Warehouse, exige: "estoque.ver" },
     ],
   },
@@ -115,10 +125,20 @@ function Itens({
 }) {
   const pathname = usePathname();
 
+  // quem executa OS mas não supervisiona é técnico: menu curto, o da rua
+  const soDeCampo =
+    capacidades.includes("os.executar") &&
+    !capacidades.includes("os.gerenciar") &&
+    !capacidades.includes("operacao.supervisionar") &&
+    !capacidades.includes("sistema.administrar");
+
   // 3.67 — o menu mostra só o que o perfil alcança; grupo que esvazia some
   const grupos = GRUPOS.map((grupo) => ({
     ...grupo,
-    itens: grupo.itens.filter((item) => capacidades.includes(item.exige)),
+    itens: grupo.itens.filter(
+      (item) =>
+        capacidades.includes(item.exige) && (!soDeCampo || item.campo),
+    ),
   })).filter((grupo) => grupo.itens.length > 0);
 
   return (

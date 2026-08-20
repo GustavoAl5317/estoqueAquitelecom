@@ -4,6 +4,7 @@ import { registrarEvento } from "./eventos";
 import { severidadeInicial } from "./severidade";
 import { bairroDaCoordenada } from "./regioes";
 import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
+import { normalizar } from "@/lib/utils";
 
 /**
  * 2.1 a 2.3 — SINCRONIZAÇÃO COM O SGP.
@@ -198,6 +199,23 @@ export type ResultadoSincronizacao = {
 };
 
 /**
+ * 2.4 — o técnico responsável que veio do SGP, casado com o cadastro daqui.
+ *
+ * O SGP manda o nome digitado por quem abriu a OS — texto livre, sem id. O
+ * casamento é por nome normalizado (sem acento, sem caixa); não achando, a OS
+ * entra sem responsável, como antes. Chutar o técnico errado é pior do que
+ * deixar a supervisão atribuir.
+ */
+function acharTecnico(
+  tecnicos: { id: string; nome: string }[],
+  bruto: ValorSgp | undefined,
+) {
+  const alvo = normalizar(texto(bruto));
+  if (!alvo) return null;
+  return tecnicos.find((t) => normalizar(t.nome) === alvo) ?? null;
+}
+
+/**
  * Sincroniza os contratos informados.
  *
  * `intervaloMs` existe porque o SGP corta com 403 quando as chamadas vêm muito
@@ -209,6 +227,10 @@ export async function sincronizarContratos(
 ): Promise<ResultadoSincronizacao> {
   const intervalo = opcoes.intervaloMs ?? 4000;
   const tipos = await todosTiposOS();
+  const tecnicos = await prisma.tecnico.findMany({
+    where: { ativo: true },
+    select: { id: true, nome: true },
+  });
   const resultado: ResultadoSincronizacao = {
     contratosConsultados: 0,
     chamadosRecebidos: 0,
@@ -243,6 +265,7 @@ export async function sincronizarContratos(
       }
 
       const idSgp = `OS-${osId}`;
+      const tecnicoSgp = acharTecnico(tecnicos, chamado.os_tecnico_responsavel);
       const { latitude, longitude } = coordenada(chamado.contrato_endereco_ll);
       if (latitude === null) resultado.semCoordenada += 1;
 
@@ -294,10 +317,21 @@ export async function sincronizarContratos(
         /*
          * Preserva a decisão local: prioridade e responsável são escolhas da
          * supervisão daqui, e o SGP não tem opinião melhor sobre elas.
+         *
+         * A exceção é a OS que ainda não tem responsável nenhum: aí o nome que
+         * veio do SGP acrescenta, não sobrescreve.
          */
+        const adotarTecnico =
+          tecnicoSgp && !existente.tecnicoId
+            ? {
+                tecnicoId: tecnicoSgp.id,
+                status: existente.status === "ABERTA" ? "ATRIBUIDA" : comum.status,
+              }
+            : {};
+
         await prisma.ordemServico.update({
           where: { id: existente.id },
-          data: comum,
+          data: { ...comum, ...adotarTecnico },
         });
         resultado.atualizadas += 1;
 
@@ -321,6 +355,13 @@ export async function sincronizarContratos(
           abertaEm,
           prioridade: "P3",
           severidade: await severidadeInicial(tipo),
+          // 2.4 — o responsável definido no SGP entra junto com a OS
+          ...(tecnicoSgp
+            ? {
+                tecnicoId: tecnicoSgp.id,
+                status: status === "ABERTA" ? "ATRIBUIDA" : status,
+              }
+            : {}),
         },
       });
       resultado.criadas += 1;

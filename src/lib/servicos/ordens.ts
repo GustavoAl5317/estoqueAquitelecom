@@ -228,10 +228,16 @@ export type FiltroOrdens = {
   busca?: string;
   /** só as que estouraram ou estão perto de estourar o prazo */
   somenteRisco?: boolean;
-  /** abertas a partir desta data (inclusive), pelo campo abertaEm */
+  /** a partir desta data (inclusive) */
   desde?: Date;
-  /** abertas até esta data (inclusive) */
+  /** até esta data (exclusive) */
   ate?: Date;
+  /**
+   * Qual data o intervalo filtra. A operação pensa em "o que é pra hoje", que
+   * é o agendamento; o histórico pensa em "o que entrou hoje", que é a
+   * abertura. São perguntas diferentes e a tela precisa oferecer as duas.
+   */
+  campoDeData?: "abertaEm" | "agendadaPara";
   limite?: number;
 };
 
@@ -266,10 +272,14 @@ export async function listarOrdens(filtro: FiltroOrdens = {}) {
       bairroId: filtro.bairroId || undefined,
       prioridade: filtro.prioridade || undefined,
       tipo: filtro.tipo || undefined,
-      abertaEm:
-        filtro.desde || filtro.ate
-          ? { gte: filtro.desde, lt: filtro.ate }
-          : undefined,
+      ...(filtro.desde || filtro.ate
+        ? {
+            [filtro.campoDeData ?? "abertaEm"]: {
+              gte: filtro.desde,
+              lt: filtro.ate,
+            },
+          }
+        : {}),
       ...(busca
         ? {
             OR: [

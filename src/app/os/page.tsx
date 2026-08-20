@@ -32,6 +32,51 @@ import {
   Vazio,
 } from "@/components/ui";
 
+/**
+ * O filtro de data responde duas perguntas diferentes: "o que entrou" (abertura)
+ * e "o que é pra fazer" (agendamento). A operação pensa na segunda; o histórico,
+ * na primeira. Deixar implícito faz o supervisor achar que o filtro perdeu OS.
+ */
+const PERIODOS = [
+  { valor: "", rotulo: "Qualquer data", campo: "abertaEm" as const, dias: null },
+  {
+    valor: "agenda-hoje",
+    rotulo: "Agendadas para hoje",
+    campo: "agendadaPara" as const,
+    dias: 0,
+  },
+  {
+    valor: "agenda-amanha",
+    rotulo: "Agendadas para amanhã",
+    campo: "agendadaPara" as const,
+    dias: 1,
+  },
+  { valor: "hoje", rotulo: "Abertas hoje", campo: "abertaEm" as const, dias: 0 },
+  { valor: "7", rotulo: "Abertas nos últimos 7 dias", campo: "abertaEm" as const, dias: 7 },
+  { valor: "30", rotulo: "Abertas nos últimos 30 dias", campo: "abertaEm" as const, dias: 30 },
+];
+
+/** traduz a opção escolhida no intervalo que a consulta entende */
+function janelaDoPeriodo(valor: string) {
+  const opcao = PERIODOS.find((p) => p.valor === valor);
+  if (!opcao || opcao.dias === null) return {};
+
+  if (opcao.campo === "agendadaPara") {
+    const { desde, ate } = intervaloDoDia(
+      new Date(Date.now() + opcao.dias * 86_400_000),
+    );
+    return { desde, ate, campoDeData: "agendadaPara" as const };
+  }
+
+  if (opcao.dias === 0) {
+    return { ...intervaloDoDia(), campoDeData: "abertaEm" as const };
+  }
+  return {
+    desde: new Date(Date.now() - opcao.dias * 86_400_000),
+    campoDeData: "abertaEm" as const,
+  };
+}
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -58,16 +103,10 @@ export default async function OrdensDeServico({
   const usuario = await usuarioAtual();
 
   // "hoje" é o atalho que a operação mais usa — focar no que abriu no dia
-  const periodo =
-    filtros.periodo === "hoje" || filtros.periodo === "7" || filtros.periodo === "30"
-      ? filtros.periodo
-      : "";
-  const janela =
-    periodo === "hoje"
-      ? intervaloDoDia()
-      : periodo === "7" || periodo === "30"
-        ? { desde: new Date(Date.now() - Number(periodo) * 86_400_000), ate: undefined }
-        : {};
+  const periodo = PERIODOS.some((p) => p.valor === filtros.periodo)
+    ? filtros.periodo!
+    : "";
+  const janela = janelaDoPeriodo(periodo);
 
   const [ordens, indicadores, carga, tecnicos, visoes, tipos] = await Promise.all([
     listarOrdens({
@@ -194,10 +233,11 @@ export default async function OrdensDeServico({
             ))}
           </select>
           <select name="periodo" defaultValue={periodo}>
-            <option value="">Qualquer data</option>
-            <option value="hoje">Abertas hoje</option>
-            <option value="7">Últimos 7 dias</option>
-            <option value="30">Últimos 30 dias</option>
+            {PERIODOS.map((opcao) => (
+              <option key={opcao.valor} value={opcao.valor}>
+                {opcao.rotulo}
+              </option>
+            ))}
           </select>
           <div className="flex gap-2">
             <button
