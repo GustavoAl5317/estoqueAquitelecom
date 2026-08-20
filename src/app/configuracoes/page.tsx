@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { PAPEL_USUARIO, TIPO_ESTOQUE } from "@/lib/dominio";
 import { limiares } from "@/lib/servicos/consultas";
 import { numero } from "@/lib/utils";
-import { CabecalhoPagina, Cartao, Etiqueta } from "@/components/ui";
+import { CabecalhoPagina, Cartao, Etiqueta, Secao } from "@/components/ui";
 import {
   FormularioNovoTipoOS,
   ListaDeTiposOS,
@@ -139,26 +139,63 @@ export default async function Configuracoes() {
           </Cartao>
 
           {/* 1.8 / 1.9 */}
+          {/*
+            Dois cadastros distintos moravam no mesmo bloco, um debaixo do
+            outro e sem rótulo — lia-se como um formulário só, embaralhado. A
+            equipe vem primeiro porque o técnico depende dela.
+          */}
           <Cartao
             titulo="Técnicos e equipes"
             descricao={`${tecnicos.length} técnico(s) · ${equipes.length} equipe(s)`}
           >
-            <ul className="mb-4 space-y-1.5">
-              {equipes.map((equipe) => (
-                <li key={equipe.id} className="text-sm">
-                  <span className="font-medium">{equipe.nome}</span>
-                  <span className="ml-2 text-xs text-[var(--texto-3)]">
-                    {equipe._count.tecnicos} técnico(s)
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-5">
+              <Secao titulo="1. Equipes">
+                {equipes.length === 0 ? (
+                  <p className="text-sm text-[var(--texto-3)]">
+                    Nenhuma equipe cadastrada. É opcional — um técnico pode
+                    existir sem equipe —, mas agrupar ajuda no quadro por
+                    equipe e no rebalanceamento.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {equipes.map((equipe) => (
+                      <li key={equipe.id} className="text-sm">
+                        <span className="font-medium">{equipe.nome}</span>
+                        <span className="ml-2 text-xs text-[var(--texto-3)]">
+                          {equipe._count.tecnicos} técnico(s)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <FormularioEquipe />
+              </Secao>
 
-            <div className="space-y-4 border-t border-[var(--borda)] pt-4">
-              <FormularioEquipe />
-              <FormularioTecnico
-                equipes={equipes.map((e) => ({ id: e.id, nome: e.nome }))}
-              />
+              <div className="border-t border-[var(--borda)] pt-5">
+                <Secao titulo="2. Técnicos">
+                  {tecnicos.length === 0 ? (
+                    <p className="text-sm text-[var(--texto-3)]">
+                      Nenhum técnico cadastrado. Sem isso não há a quem
+                      atribuir uma OS — é o cadastro que destrava o quadro.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {tecnicos.map((tecnico) => (
+                        <li key={tecnico.id} className="text-sm">
+                          <span className="font-medium">{tecnico.nome}</span>
+                          <span className="ml-2 text-xs text-[var(--texto-3)]">
+                            {tecnico.matricula}
+                            {tecnico.equipe ? ` · ${tecnico.equipe.nome}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <FormularioTecnico
+                    equipes={equipes.map((e) => ({ id: e.id, nome: e.nome }))}
+                  />
+                </Secao>
+              </div>
             </div>
           </Cartao>
         </div>

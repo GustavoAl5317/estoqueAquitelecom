@@ -161,7 +161,14 @@ export function FormularioTecnico({
         <Campo rotulo="Telefone">
           <input name="telefone" />
         </Campo>
-        <Campo rotulo="Equipe">
+        <Campo
+          rotulo="Equipe"
+          dica={
+            equipes.length === 0
+              ? "Nenhuma equipe cadastrada ainda — crie acima se quiser agrupar."
+              : undefined
+          }
+        >
           <select name="equipeId" defaultValue="">
             <option value="">Sem equipe</option>
             {equipes.map((equipe) => (
