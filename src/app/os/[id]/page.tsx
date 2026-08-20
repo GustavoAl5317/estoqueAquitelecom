@@ -8,9 +8,9 @@ import {
   SEVERIDADE_OS,
   SITUACAO_SLA,
   STATUS_OS,
-  TIPO_OS,
 } from "@/lib/dominio";
 import { detalheOrdem, prazoLegivel } from "@/lib/servicos/ordens";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { materiaisDaOrdem } from "@/lib/servicos/ordens";
 import { minutosLegiveis } from "@/lib/servicos/eventos";
 import { dataHora, hora, moeda, numero, quantidade } from "@/lib/utils";
@@ -43,13 +43,14 @@ export default async function DetalheOS({
   const ordem = await detalheOrdem(id);
   if (!ordem) notFound();
 
-  const [material, tecnicos] = await Promise.all([
+  const [material, tecnicos, tipos] = await Promise.all([
     materiaisDaOrdem(ordem.id),
     prisma.tecnico.findMany({
       where: { ativo: true },
       include: { equipe: { select: { nome: true } } },
       orderBy: { nome: "asc" },
     }),
+    todosTiposOS(),
   ]);
 
   return (
@@ -76,7 +77,7 @@ export default async function DetalheOS({
             <ListaDefinicoes
               colunas={3}
               itens={[
-                { rotulo: "Tipo", valor: TIPO_OS.rotulo(ordem.tipo) },
+                { rotulo: "Tipo", valor: rotuloDoTipo(tipos, ordem.tipo) },
                 {
                   rotulo: "Severidade",
                   valor: (

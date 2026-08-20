@@ -2,13 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { auditar, ErroDeNegocio, type Tx } from "./nucleo";
 import { registrarEvento } from "./eventos";
 import { fecharPermanencia } from "./geofence";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import {
   COLUNAS_QUADRO,
   STATUS_OS,
   STATUS_OS_ABERTOS,
   STATUS_OS_ENCERRADOS,
   STATUS_OS_EXIGEM_TECNICO,
-  TIPO_OS,
 } from "@/lib/dominio";
 
 /**
@@ -350,7 +350,11 @@ export type DadosOrdem = {
 export async function criarOrdem(dados: DadosOrdem, usuarioId: string) {
   const numero = dados.numero.trim();
   if (!numero) throw new ErroDeNegocio("Informe o número da OS.");
-  if (!TIPO_OS.inclui(dados.tipo)) throw new ErroDeNegocio("Tipo de OS inválido.");
+
+  const tipos = await todosTiposOS();
+  if (!tipos.some((t) => t.valor === dados.tipo)) {
+    throw new ErroDeNegocio("Tipo de OS inválido.");
+  }
 
   const existente = await prisma.ordemServico.findUnique({ where: { numero } });
   if (existente) throw new ErroDeNegocio(`A OS ${numero} já existe.`);
@@ -401,7 +405,7 @@ export async function criarOrdem(dados: DadosOrdem, usuarioId: string) {
   await registrarEvento({
     ordemServicoId: ordem.id,
     tipo: "RECEBIDA",
-    descricao: `OS registrada na Central como ${TIPO_OS.rotulo(dados.tipo).toLowerCase()}.`,
+    descricao: `OS registrada na Central como ${rotuloDoTipo(tipos, dados.tipo).toLowerCase()}.`,
     status: ordem.status,
     usuarioId,
     ocorreuEm: ordem.abertaEm,

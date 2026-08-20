@@ -7,6 +7,7 @@ import {
   quadroPorRecorte,
   type RecorteQuadro,
 } from "@/lib/servicos/ordens";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { visoesParaTela } from "@/lib/servicos/visoes";
 import { usuarioAtual } from "@/lib/sessao";
 import { numero, queryDeFiltros } from "@/lib/utils";
@@ -67,7 +68,7 @@ export default async function QuadroDeOrdens({
 
   const usuario = await usuarioAtual();
 
-  const [faixas, tecnicos, visoes] = await Promise.all([
+  const [faixas, tecnicos, visoes, tipos] = await Promise.all([
     quadroPorRecorte(
       { tecnicoId: filtros.tecnicoId, prioridade: filtros.prioridade, ...janela },
       recorte,
@@ -78,6 +79,7 @@ export default async function QuadroDeOrdens({
       orderBy: { nome: "asc" },
     }),
     visoesParaTela("/os/quadro", usuario.id),
+    todosTiposOS(),
   ]);
 
   // o número que importa é o trabalho em aberto; concluída é resultado, não fila
@@ -104,7 +106,7 @@ export default async function QuadroDeOrdens({
         cliente: ordem.cliente,
         endereco: ordem.endereco,
         bairro: ordem.bairro?.nome ?? ordem.bairroNome,
-        tipo: ordem.tipo,
+        tipo: rotuloDoTipo(tipos, ordem.tipo),
         prioridade: ordem.prioridade,
         status: ordem.status,
         tecnicoId: ordem.tecnicoId,

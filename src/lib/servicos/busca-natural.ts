@@ -4,10 +4,10 @@ import {
   STATUS_OS,
   STATUS_OS_ABERTOS,
   SUBTIPOS_POR_TIPO,
-  TIPO_OS,
 } from "@/lib/dominio";
 import { prisma } from "@/lib/prisma";
 import { normalizar } from "@/lib/utils";
+import { rotuloDoTipo, tiposAtivos, type TipoOSCompleto } from "./tipos-os";
 
 /**
  * 2.48 — BUSCA EM LINGUAGEM NATURAL.
@@ -82,15 +82,15 @@ function comPlural(termo: string) {
   return [...formas];
 }
 
-function regrasDeDominio(): Regra[] {
+function regrasDeDominio(tipos: TipoOSCompleto[]): Regra[] {
   const regras: Regra[] = [];
 
-  for (const opcao of TIPO_OS.opcoes) {
+  for (const tipo of tipos) {
     regras.push({
       campo: "tipo",
       rotulo: "Tipo",
-      valor: opcao.valor,
-      gatilhos: comPlural(opcao.rotulo),
+      valor: tipo.valor,
+      gatilhos: comPlural(tipo.rotulo),
     });
   }
 
@@ -207,6 +207,7 @@ const EXPRESSOES: Regra[] = [
 export async function interpretar(pergunta: string): Promise<Interpretacao> {
   const original = pergunta.trim();
   let restante = ` ${normalizar(original)} `;
+  const tipos = await tiposAtivos();
 
   const entendido: { campo: string; valor: string; rotulo: string }[] = [];
 
@@ -237,7 +238,7 @@ export async function interpretar(pergunta: string): Promise<Interpretacao> {
   for (const regra of EXPRESSOES) consumir(regra);
 
   // as mais longas antes, para "mudança de endereço" ganhar de "endereço"
-  const dominio = regrasDeDominio().sort(
+  const dominio = regrasDeDominio(tipos).sort(
     (a, b) => (b.gatilhos[0]?.length ?? 0) - (a.gatilhos[0]?.length ?? 0),
   );
   // Subtipo primeiro, sem consumir o texto, para que a regra de tipo derivada
@@ -331,15 +332,15 @@ export async function interpretar(pergunta: string): Promise<Interpretacao> {
   return {
     entendido: entendido.map((item) => ({
       campo: item.rotulo,
-      valor: rotularValor(item.campo, item.valor),
+      valor: rotularValor(item.campo, item.valor, tipos),
     })),
     termoLivre: sobra || null,
     query: parametros.toString(),
   };
 }
 
-function rotularValor(campo: string, valor: string) {
-  if (campo === "tipo") return TIPO_OS.rotulo(valor);
+function rotularValor(campo: string, valor: string, tipos: TipoOSCompleto[]) {
+  if (campo === "tipo") return rotuloDoTipo(tipos, valor);
   if (campo === "status") {
     return valor.includes(",")
       ? "em aberto"

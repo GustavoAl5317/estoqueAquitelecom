@@ -15,6 +15,7 @@ import {
   salvarBairro,
   salvarPoligono,
 } from "@/lib/servicos/regioes";
+import { atualizarTipoOS, criarTipoOS } from "@/lib/servicos/tipos-os";
 import { podeFazer } from "@/lib/permissoes";
 import { prisma } from "@/lib/prisma";
 import type { Resultado } from "./estoque";
@@ -252,5 +253,57 @@ export async function acaoSalvarBairro(
         usuario.id,
       ),
     ["/regioes", "/fila", "/os"],
+  );
+}
+
+/**
+ * 2.5 — os tipos de OS, cadastrados em vez de fixos no código.
+ *
+ * Exige `sistema.administrar`: mexer no vocabulário do Bloco 2 muda o que
+ * aparece em relatório, fila e mapa — não é ajuste de rotina de supervisão.
+ */
+export async function acaoCriarTipoOS(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite criar tipos de OS." };
+  }
+
+  return executar(
+    () =>
+      criarTipoOS(
+        {
+          rotulo: String(dados.get("rotulo") ?? ""),
+          tom: String(dados.get("tom") ?? "neutro"),
+        },
+        usuario.id,
+      ),
+    ["/configuracoes", "/os", "/os/nova"],
+  );
+}
+
+export async function acaoAtualizarTipoOS(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite alterar tipos de OS." };
+  }
+
+  return executar(
+    () =>
+      atualizarTipoOS(
+        {
+          id: String(dados.get("tipoId") ?? ""),
+          rotulo: String(dados.get("rotulo") ?? ""),
+          tom: String(dados.get("tom") ?? "neutro"),
+          ativo: dados.get("ativo") === "1",
+        },
+        usuario.id,
+      ),
+    ["/configuracoes", "/os", "/os/nova"],
   );
 }

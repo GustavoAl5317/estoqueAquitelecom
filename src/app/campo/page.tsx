@@ -7,9 +7,9 @@ import {
   SITUACAO_SLA,
   STATUS_OS,
   STATUS_OS_ABERTOS,
-  TIPO_OS,
 } from "@/lib/dominio";
 import { listarOrdens, prazoLegivel } from "@/lib/servicos/ordens";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { roteiroDoTecnico } from "@/lib/servicos/roteiro";
 import { hora, numero, quantidade, tempoRelativo } from "@/lib/utils";
 import {
@@ -46,7 +46,7 @@ export default async function MeuDia() {
     );
   }
 
-  const [tecnico, ordens, roteiro, posse, ultima] = await Promise.all([
+  const [tecnico, ordens, roteiro, posse, ultima, tipos] = await Promise.all([
     prisma.tecnico.findUnique({
       where: { id: usuario.tecnicoId },
       include: { equipe: true, detentor: true },
@@ -66,6 +66,7 @@ export default async function MeuDia() {
       where: { tecnicoId: usuario.tecnicoId },
       orderBy: { capturadoEm: "desc" },
     }),
+    todosTiposOS(),
   ]);
 
   const emJornada = tecnico?.status !== "FORA_JORNADA";
@@ -187,7 +188,7 @@ export default async function MeuDia() {
           {(atual.descricao || atual.materiaisPrevistos.length > 0) && (
             <details className="mt-3 border-t border-[var(--borda)] pt-3">
               <summary className="cursor-pointer text-xs font-semibold text-[var(--texto-2)]">
-                {TIPO_OS.rotulo(atual.tipo)}
+                {rotuloDoTipo(tipos, atual.tipo)}
                 {atual.titulo ? ` — ${atual.titulo}` : ""} · mais detalhes
               </summary>
 

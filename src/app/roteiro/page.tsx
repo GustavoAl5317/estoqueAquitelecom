@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Route } from "lucide-react";
-import { PRIORIDADE_OS, SITUACAO_SLA, TIPO_OS } from "@/lib/dominio";
+import { PRIORIDADE_OS, SITUACAO_SLA } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { economiaDoRoteiro, roteirosDoDia } from "@/lib/servicos/roteiro";
 import { prazoLegivel } from "@/lib/servicos/ordens";
 import { hora, numero } from "@/lib/utils";
@@ -31,7 +32,7 @@ function minutosLegiveis(minutos: number) {
  * livre para ignorar — a sugestão não move nada sozinha.
  */
 export default async function Roteiros() {
-  const roteiros = await roteirosDoDia();
+  const [roteiros, tipos] = await Promise.all([roteirosDoDia(), todosTiposOS()]);
 
   const totalKm = roteiros.reduce((s, r) => s + r.totalKm, 0);
   const totalParadas = roteiros.reduce((s, r) => s + r.paradas.length, 0);
@@ -200,7 +201,7 @@ export default async function Roteiros() {
                           <p className="truncate text-sm">
                             {parada.cliente ?? "Cliente não informado"}
                             <span className="ml-1.5 text-xs text-[var(--texto-3)]">
-                              {TIPO_OS.rotulo(parada.tipo)}
+                              {rotuloDoTipo(tipos, parada.tipo)}
                             </span>
                           </p>
                           <p className="text-xs text-[var(--texto-3)]">

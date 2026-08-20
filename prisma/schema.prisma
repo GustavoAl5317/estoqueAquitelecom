@@ -165,6 +165,25 @@ model Categoria {
   materiais Material[]
 }
 
+/// 2.5 — TIPO DE ORDEM DE SERVIÇO, editável.
+///
+/// Era fixo em código (dominio.ts) — cliente nenhum consegue renomear
+/// "Upgrade de plano" ou esconder um tipo que não usa sem pedir alteração no
+/// sistema. `valor` é o código estável gravado em OrdemServico.tipo; ele nunca
+/// muda depois de criado, só o rótulo e a cor. Desativar em vez de apagar
+/// preserva o histórico das OS já lançadas com aquele tipo.
+model TipoOS {
+  id       String   @id @default(cuid())
+  /// código estável — o que fica gravado em OrdemServico.tipo
+  valor    String   @unique
+  rotulo   String
+  /// mesma paleta de Etiqueta: neutro | positivo | informativo | atencao | critico | roxo
+  tom      String   @default("neutro")
+  ativo    Boolean  @default(true)
+  ordem    Int      @default(0)
+  criadoEm DateTime @default(now())
+}
+
 model Fornecedor {
   id        String   @id @default(cuid())
   nome      String   @unique

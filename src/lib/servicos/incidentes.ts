@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { STATUS_OS_ABERTOS, TIPO_OS } from "@/lib/dominio";
+import { STATUS_OS_ABERTOS } from "@/lib/dominio";
 import { distanciaKm } from "./frota";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 
 /**
  * 2.25 a 2.28 — O QUE O SGP NÃO ENXERGA.
@@ -339,10 +340,11 @@ export async function possiveisIncidentes(opcoes?: {
  * da tela. Frases, não números soltos.
  */
 export async function analisePrimaria() {
-  const [incidentes, concentracoes, repetidos] = await Promise.all([
+  const [incidentes, concentracoes, repetidos, tipos] = await Promise.all([
     possiveisIncidentes(),
     concentracaoPorBairro(),
     reincidencias(30, 3),
+    todosTiposOS(),
   ]);
 
   const frases: {
@@ -354,7 +356,7 @@ export async function analisePrimaria() {
     frases.push({
       tom: incidente.confianca === "ALTA" ? "critico" : "atencao",
       texto:
-        `${incidente.ordens.length} OS de ${TIPO_OS.rotulo(incidente.tipo).toLowerCase()} ` +
+        `${incidente.ordens.length} OS de ${rotuloDoTipo(tipos, incidente.tipo).toLowerCase()} ` +
         `foram abertas num raio de ${incidente.raioKm} km em ${incidente.minutosDeJanela} min` +
         `${incidente.bairro ? ` (${incidente.bairro})` : ""}. ` +
         `Pode ser um problema comum de infraestrutura.`,
@@ -367,7 +369,7 @@ export async function analisePrimaria() {
       tom: concentracao.tecnicosNaRegiao === 0 ? "critico" : "atencao",
       texto:
         `${concentracao.bairro} concentra ${concentracao.total} OS abertas nas últimas horas ` +
-        `(${concentracao.doTipo} de ${TIPO_OS.rotulo(concentracao.tipoPredominante).toLowerCase()})` +
+        `(${concentracao.doTipo} de ${rotuloDoTipo(tipos, concentracao.tipoPredominante).toLowerCase()})` +
         `${concentracao.tecnicosNaRegiao === 0 ? " e não tem técnico responsável em jornada" : ""}.`,
     });
   }

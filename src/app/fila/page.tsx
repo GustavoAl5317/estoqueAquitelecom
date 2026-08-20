@@ -4,11 +4,11 @@ import {
   PRIORIDADE_OS,
   SITUACAO_SLA,
   STATUS_OS,
-  TIPO_OS,
 } from "@/lib/dominio";
 import { filaInteligente, leituraDaOperacao } from "@/lib/servicos/fila";
 import { prazoLegivel } from "@/lib/servicos/ordens";
 import { parametros, somaDosPesos } from "@/lib/servicos/parametros";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { visoesParaTela } from "@/lib/servicos/visoes";
 import { usuarioAtual } from "@/lib/sessao";
 import { numero, queryDeFiltros, tempoRelativo } from "@/lib/utils";
@@ -46,7 +46,7 @@ export default async function Fila({
 
   const usuario = await usuarioAtual();
 
-  const [fila, leitura, config, visoes, tecnicos] = await Promise.all([
+  const [fila, leitura, config, visoes, tecnicos, tipos] = await Promise.all([
     filaInteligente({ limite: 40, somenteSemResponsavel }),
     leituraDaOperacao(),
     parametros(),
@@ -56,6 +56,7 @@ export default async function Fila({
       select: { id: true, nome: true },
       orderBy: { nome: "asc" },
     }),
+    todosTiposOS(),
   ]);
 
   const comRecomendacao = fila.filter((i) => i.candidatos.length > 0).length;
@@ -179,7 +180,7 @@ export default async function Fila({
                     <p className="mt-1 text-sm font-medium">
                       {item.cliente ?? "Cliente não informado"}
                       <span className="ml-2 text-xs font-normal text-[var(--texto-3)]">
-                        {TIPO_OS.rotulo(item.tipo)}
+                        {rotuloDoTipo(tipos, item.tipo)}
                       </span>
                     </p>
 

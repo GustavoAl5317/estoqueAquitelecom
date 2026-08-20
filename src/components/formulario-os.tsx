@@ -1,12 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  PRIORIDADE_OS,
-  SEVERIDADE_OS,
-  STATUS_OS,
-  TIPO_OS,
-} from "@/lib/dominio";
+import { PRIORIDADE_OS, SEVERIDADE_OS, STATUS_OS } from "@/lib/dominio";
 import {
   acaoAtribuirOrdem,
   acaoAtualizarOrdem,
@@ -46,10 +41,13 @@ export type OrdemEditavel = {
 export function FormularioOS({
   bairros,
   tecnicos,
+  tipos,
   ordem,
 }: {
   bairros: { id: string; nome: string; cidade: string }[];
   tecnicos: { id: string; nome: string }[];
+  /** 2.5 — cadastrados em Configurações, não mais fixos em código */
+  tipos: { valor: string; rotulo: string }[];
   ordem?: OrdemEditavel;
 }) {
   const edicao = Boolean(ordem);
@@ -93,8 +91,12 @@ export function FormularioOS({
           </Campo>
 
           <Campo rotulo="Tipo" obrigatorio>
-            <select name="tipo" defaultValue={ordem?.tipo ?? "INSTALACAO"} required>
-              {TIPO_OS.opcoes.map((opcao) => (
+            <select
+              name="tipo"
+              defaultValue={ordem?.tipo ?? tipos[0]?.valor ?? ""}
+              required
+            >
+              {tipos.map((opcao) => (
                 <option key={opcao.valor} value={opcao.valor}>
                   {opcao.rotulo}
                 </option>

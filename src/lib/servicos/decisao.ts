@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { distanciaKm, posicoesDosTecnicos } from "./frota";
 import { atendimentoTipicoPorTipo } from "./eventos";
 import { situacaoSla } from "./ordens";
-import { STATUS_OS_ABERTOS, TIPO_OS } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
+import { STATUS_OS_ABERTOS } from "@/lib/dominio";
 
 /**
  * 3.56 — PREVISÃO DE ATRASO.
@@ -86,7 +87,7 @@ const PESO_RISCO: Record<RiscoPrevisto, number> = {
 };
 
 export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
-  const [ordens, posicoes, tipico] = await Promise.all([
+  const [ordens, posicoes, tipico, tipos] = await Promise.all([
     prisma.ordemServico.findMany({
       where: { status: { in: STATUS_OS_ABERTOS } },
       include: {
@@ -96,6 +97,7 @@ export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
     }),
     posicoesDosTecnicos(),
     atendimentoTipicoPorTipo(30),
+    todosTiposOS(),
   ]);
 
   const posicaoPor = new Map(posicoes.map((p) => [p.tecnicoId, p]));
@@ -175,7 +177,7 @@ export async function previsaoDeAtraso(): Promise<PrevisaoDeAtraso[]> {
           ? `${ordem.tecnico.nome} está sem posição conhecida agora.`
           : jaNoLocal
             ? `No local há ${Math.round(decorridoNoLocal)} min; restam cerca de ${restanteAtendimento} min de atendimento.`
-            : `${numeroCurto(km!)} km até o cliente (~${minutosDeslocamento} min) mais ~${restanteAtendimento} min de ${TIPO_OS.rotulo(ordem.tipo).toLowerCase()}.`;
+            : `${numeroCurto(km!)} km até o cliente (~${minutosDeslocamento} min) mais ~${restanteAtendimento} min de ${rotuloDoTipo(tipos, ordem.tipo).toLowerCase()}.`;
 
     return {
       ordemId: ordem.id,

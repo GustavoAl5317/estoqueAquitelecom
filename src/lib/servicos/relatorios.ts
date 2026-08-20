@@ -10,8 +10,8 @@ import {
   STATUS_SERIAL,
   TIPO_ENTRADA,
   TIPO_MOVIMENTACAO,
-  TIPO_OS,
 } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import { dataHora, diasAtras, numero } from "@/lib/utils";
 import { consumoPorDetentor, saldosConsolidados } from "./consultas";
 import {
@@ -625,7 +625,10 @@ const RELATORIOS_OS: Relatorio[] = [
     descricao:
       "Tudo que ainda consome capacidade da operação, com prazo e responsável.",
     async carregar() {
-      const ordens = await listarOrdens({ status: STATUS_OS_ABERTOS, limite: 500 });
+      const [ordens, tipos] = await Promise.all([
+        listarOrdens({ status: STATUS_OS_ABERTOS, limite: 500 }),
+        todosTiposOS(),
+      ]);
       return {
         colunas: [
           "OS",
@@ -644,7 +647,7 @@ const RELATORIOS_OS: Relatorio[] = [
         linhas: ordens.map((o) => [
           o.numero,
           texto(o.cliente),
-          TIPO_OS.rotulo(o.tipo),
+          rotuloDoTipo(tipos, o.tipo),
           texto(o.subtipo),
           o.prioridade,
           SEVERIDADE_OS.rotulo(o.severidade),
@@ -665,18 +668,21 @@ const RELATORIOS_OS: Relatorio[] = [
     descricao: "Atendimentos encerrados no período, com tempo total e SLA.",
     periodo: true,
     async carregar(dias) {
-      const ordens = await prisma.ordemServico.findMany({
-        where: { concluidaEm: { gte: diasAtras(dias) } },
-        include: {
-          tecnico: { select: { nome: true } },
-          equipe: { select: { nome: true } },
-          eventos: {
-            select: { tipo: true, status: true, ocorreuEm: true },
-            orderBy: { ocorreuEm: "asc" },
+      const [ordens, tipos] = await Promise.all([
+        prisma.ordemServico.findMany({
+          where: { concluidaEm: { gte: diasAtras(dias) } },
+          include: {
+            tecnico: { select: { nome: true } },
+            equipe: { select: { nome: true } },
+            eventos: {
+              select: { tipo: true, status: true, ocorreuEm: true },
+              orderBy: { ocorreuEm: "asc" },
+            },
           },
-        },
-        orderBy: { concluidaEm: "desc" },
-      });
+          orderBy: { concluidaEm: "desc" },
+        }),
+        todosTiposOS(),
+      ]);
 
       return {
         colunas: [
@@ -699,7 +705,7 @@ const RELATORIOS_OS: Relatorio[] = [
           return [
             o.numero,
             texto(o.cliente),
-            TIPO_OS.rotulo(o.tipo),
+            rotuloDoTipo(tipos, o.tipo),
             texto(o.bairroNome),
             texto(o.tecnico?.nome),
             texto(o.equipe?.nome),
@@ -721,11 +727,14 @@ const RELATORIOS_OS: Relatorio[] = [
     nome: "Ordens atrasadas",
     descricao: "Abertas com o prazo já vencido — o que precisa de explicação.",
     async carregar() {
-      const ordens = await listarOrdens({
-        status: STATUS_OS_ABERTOS,
-        somenteRisco: true,
-        limite: 500,
-      });
+      const [ordens, tipos] = await Promise.all([
+        listarOrdens({
+          status: STATUS_OS_ABERTOS,
+          somenteRisco: true,
+          limite: 500,
+        }),
+        todosTiposOS(),
+      ]);
       const atrasadas = ordens.filter((o) => o.situacao === "ESTOURADO");
 
       return {
@@ -742,7 +751,7 @@ const RELATORIOS_OS: Relatorio[] = [
         linhas: atrasadas.map((o) => [
           o.numero,
           texto(o.cliente),
-          TIPO_OS.rotulo(o.tipo),
+          rotuloDoTipo(tipos, o.tipo),
           texto(o.bairro?.nome ?? o.bairroNome),
           texto(o.tecnico?.nome ?? "sem responsável"),
           o.prazo ? dataHora(o.prazo) : "",
@@ -832,24 +841,27 @@ const RELATORIOS_OS: Relatorio[] = [
     periodo: true,
     async carregar(dias) {
       const desde = diasAtras(dias);
-      const bairros = await prisma.bairro.findMany({
-        include: {
-          regiao: { select: { nome: true } },
-          responsavelPrincipal: { select: { nome: true } },
-          responsavelSecundario: { select: { nome: true } },
-          ordens: {
-            where: { abertaEm: { gte: desde } },
-            select: {
-              status: true,
-              tipo: true,
-              prazo: true,
-              concluidaEm: true,
-              abertaEm: true,
+      const [bairros, tiposOS] = await Promise.all([
+        prisma.bairro.findMany({
+          include: {
+            regiao: { select: { nome: true } },
+            responsavelPrincipal: { select: { nome: true } },
+            responsavelSecundario: { select: { nome: true } },
+            ordens: {
+              where: { abertaEm: { gte: desde } },
+              select: {
+                status: true,
+                tipo: true,
+                prazo: true,
+                concluidaEm: true,
+                abertaEm: true,
+              },
             },
           },
-        },
-        orderBy: { nome: "asc" },
-      });
+          orderBy: { nome: "asc" },
+        }),
+        todosTiposOS(),
+      ]);
 
       return {
         colunas: [
@@ -878,7 +890,7 @@ const RELATORIOS_OS: Relatorio[] = [
             texto(b.responsavelSecundario?.nome),
             String(b.ordens.length),
             String(b.ordens.filter((o) => STATUS_OS_ABERTOS.includes(o.status)).length),
-            predominante ? TIPO_OS.rotulo(predominante[0]) : "",
+            predominante ? rotuloDoTipo(tiposOS, predominante[0]) : "",
             String(b.ordens.filter((o) => o.status === "CONCLUIDA").length),
           ];
         }),
@@ -893,7 +905,10 @@ const RELATORIOS_OS: Relatorio[] = [
       "Quanto leva atribuir, deslocar e atender — por tipo de ordem (2.41).",
     periodo: true,
     async carregar(dias) {
-      const medias = await temposMedios(dias);
+      const [medias, tipos] = await Promise.all([
+        temposMedios(dias),
+        todosTiposOS(),
+      ]);
       return {
         colunas: [
           "Tipo",
@@ -913,7 +928,7 @@ const RELATORIOS_OS: Relatorio[] = [
             minutosLegiveis(medias.total),
           ],
           ...medias.porTipo.map((linha) => [
-            TIPO_OS.rotulo(linha.tipo),
+            rotuloDoTipo(tipos, linha.tipo),
             String(linha.quantidade),
             minutosLegiveis(linha.ateAtribuicao),
             minutosLegiveis(linha.emDeslocamento),
@@ -932,7 +947,10 @@ const RELATORIOS_OS: Relatorio[] = [
       "Quem voltou a abrir chamado — sinal de problema que não foi resolvido (2.25).",
     periodo: true,
     async carregar(dias) {
-      const lista = await reincidencias(dias, 2);
+      const [lista, tipos] = await Promise.all([
+        reincidencias(dias, 2),
+        todosTiposOS(),
+      ]);
       return {
         colunas: [
           "Cliente",
@@ -948,7 +966,7 @@ const RELATORIOS_OS: Relatorio[] = [
           String(r.ordens),
           String(r.abertas),
           r.tipos
-            .map((t) => `${TIPO_OS.rotulo(t.tipo)} (${t.quantidade})`)
+            .map((t) => `${rotuloDoTipo(tipos, t.tipo)} (${t.quantidade})`)
             .join(", "),
           dataHora(r.ultimaEm),
         ]),
@@ -962,16 +980,19 @@ const RELATORIOS_OS: Relatorio[] = [
     descricao: "Cumprimento de prazo por tipo de ordem no período.",
     periodo: true,
     async carregar(dias) {
-      const ordens = await prisma.ordemServico.findMany({
-        where: { concluidaEm: { gte: diasAtras(dias) }, prazo: { not: null } },
-        select: {
-          tipo: true,
-          prazo: true,
-          concluidaEm: true,
-          status: true,
-          abertaEm: true,
-        },
-      });
+      const [ordens, tipos] = await Promise.all([
+        prisma.ordemServico.findMany({
+          where: { concluidaEm: { gte: diasAtras(dias) }, prazo: { not: null } },
+          select: {
+            tipo: true,
+            prazo: true,
+            concluidaEm: true,
+            status: true,
+            abertaEm: true,
+          },
+        }),
+        todosTiposOS(),
+      ]);
 
       const porTipo = new Map<string, { total: number; noPrazo: number }>();
       for (const ordem of ordens) {
@@ -997,7 +1018,7 @@ const RELATORIOS_OS: Relatorio[] = [
           ...[...porTipo.entries()]
             .sort((a, b) => b[1].total - a[1].total)
             .map(([tipo, v]) => [
-              TIPO_OS.rotulo(tipo),
+              rotuloDoTipo(tipos, tipo),
               String(v.total),
               String(v.noPrazo),
               String(v.total - v.noPrazo),
@@ -1106,7 +1127,10 @@ const RELATORIOS_OS: Relatorio[] = [
     descricao:
       "Agrupamentos de OS próximas do mesmo tipo — hipótese, não conclusão (2.27).",
     async carregar() {
-      const incidentes = await possiveisIncidentes();
+      const [incidentes, tipos] = await Promise.all([
+        possiveisIncidentes(),
+        todosTiposOS(),
+      ]);
       return {
         colunas: [
           "Tipo",
@@ -1120,7 +1144,7 @@ const RELATORIOS_OS: Relatorio[] = [
           "Números",
         ],
         linhas: incidentes.map((i) => [
-          TIPO_OS.rotulo(i.tipo),
+          rotuloDoTipo(tipos, i.tipo),
           texto(i.bairro),
           String(i.ordens.length),
           numero(i.raioKm, 2),

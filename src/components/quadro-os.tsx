@@ -8,7 +8,6 @@ import {
   PRIORIDADE_OS,
   SITUACAO_SLA,
   STATUS_OS,
-  TIPO_OS,
   type Tom,
 } from "@/lib/dominio";
 import { acaoAtribuirOrdem, acaoMoverOrdem } from "@/app/acoes/operacao";
@@ -21,6 +20,7 @@ export type CartaoOS = {
   cliente: string | null;
   endereco: string | null;
   bairro: string | null;
+  /** rótulo já resolvido no servidor — o tipo é cadastrável (2.5) */
   tipo: string;
   prioridade: string;
   status: string;
@@ -170,9 +170,7 @@ export function QuadroOS({
                   <p className="mt-1 truncate text-sm font-medium">
                     {cartao.cliente ?? "Cliente não informado"}
                   </p>
-                  <p className="text-xs text-[var(--texto-3)]">
-                    {TIPO_OS.rotulo(cartao.tipo)}
-                  </p>
+                  <p className="text-xs text-[var(--texto-3)]">{cartao.tipo}</p>
 
                   {(cartao.bairro || cartao.endereco) && (
                     <p className="mt-1.5 flex items-start gap-1 text-xs text-[var(--texto-3)]">

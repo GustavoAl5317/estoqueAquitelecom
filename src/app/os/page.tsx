@@ -6,7 +6,6 @@ import {
   SITUACAO_SLA,
   STATUS_OS,
   STATUS_OS_ABERTOS,
-  TIPO_OS,
 } from "@/lib/dominio";
 import {
   cargaPorTecnico,
@@ -15,6 +14,7 @@ import {
   listarOrdens,
   prazoLegivel,
 } from "@/lib/servicos/ordens";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { visoesParaTela } from "@/lib/servicos/visoes";
 import { usuarioAtual } from "@/lib/sessao";
 import { data, numero, percentual, queryDeFiltros } from "@/lib/utils";
@@ -69,7 +69,7 @@ export default async function OrdensDeServico({
         ? { desde: new Date(Date.now() - Number(periodo) * 86_400_000), ate: undefined }
         : {};
 
-  const [ordens, indicadores, carga, tecnicos, visoes] = await Promise.all([
+  const [ordens, indicadores, carga, tecnicos, visoes, tipos] = await Promise.all([
     listarOrdens({
       status: filtros.status ? [filtros.status] : undefined,
       tecnicoId: filtros.tecnicoId,
@@ -87,6 +87,7 @@ export default async function OrdensDeServico({
       orderBy: { nome: "asc" },
     }),
     visoesParaTela("/os", usuario.id),
+    todosTiposOS(),
   ]);
 
   const temFiltro = Boolean(
@@ -281,7 +282,7 @@ export default async function OrdensDeServico({
                           </span>
                         )}
                       </Td>
-                      <Td className="text-sm">{TIPO_OS.rotulo(ordem.tipo)}</Td>
+                      <Td className="text-sm">{rotuloDoTipo(tipos, ordem.tipo)}</Td>
                       <Td>
                         <Etiqueta tom={STATUS_OS.tom(ordem.status)} ponto>
                           {STATUS_OS.rotulo(ordem.status)}

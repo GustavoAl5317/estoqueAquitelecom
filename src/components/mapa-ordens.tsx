@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Flame, LayoutGrid, MapPin } from "lucide-react";
 import { MapaRuas, type PontoMapaRua } from "./mapa-ruas";
-import { PRIORIDADE_OS, SEVERIDADE_OS, TIPO_OS } from "@/lib/dominio";
+import { PRIORIDADE_OS, SEVERIDADE_OS } from "@/lib/dominio";
 import { numero } from "@/lib/utils";
 import { Botao, Etiqueta } from "./ui";
 
@@ -14,6 +14,7 @@ export type OrdemNoMapa = {
   cliente: string | null;
   endereco: string | null;
   bairro: string | null;
+  /** rótulo já resolvido no servidor — o tipo é cadastrável (2.5) */
   tipo: string;
   severidade: string;
   prioridade: string;
@@ -154,7 +155,7 @@ export function MapaOrdens({
           pontos={ordens.map<PontoMapaRua>((o) => ({
             id: o.id,
             rotulo: `${o.numero} — ${o.cliente ?? "cliente não informado"}`,
-            detalhe: `${TIPO_OS.rotulo(o.tipo)} · ${SEVERIDADE_OS.rotulo(o.severidade)}${
+            detalhe: `${o.tipo} · ${SEVERIDADE_OS.rotulo(o.severidade)}${
               o.bairro ? ` · ${o.bairro}` : ""
             }`,
             latitude: o.latitude,
@@ -254,7 +255,7 @@ export function MapaOrdens({
             {selecionada.cliente ?? "Cliente não informado"}
           </p>
           <p className="text-xs text-[var(--texto-3)]">
-            {TIPO_OS.rotulo(selecionada.tipo)} ·{" "}
+            {selecionada.tipo} ·{" "}
             {selecionada.bairro ?? selecionada.endereco ?? "sem endereço"} ·{" "}
             {numero(selecionada.latitude, 5)}, {numero(selecionada.longitude, 5)}
           </p>

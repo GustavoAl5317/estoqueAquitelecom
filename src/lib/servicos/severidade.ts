@@ -1,9 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import {
-  ESCALA_SEVERIDADE,
-  SEVERIDADE_PADRAO_POR_TIPO,
-  TIPO_OS,
-} from "@/lib/dominio";
+import { ESCALA_SEVERIDADE, SEVERIDADE_PADRAO_POR_TIPO } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import { situacaoSla } from "./ordens";
 import { registrarEvento } from "./eventos";
 
@@ -44,14 +41,20 @@ export async function matrizDeSeveridade(): Promise<MatrizSeveridade> {
 }
 
 export async function salvarMatrizDeSeveridade(valores: MatrizSeveridade) {
+  const tipos = await todosTiposOS();
   for (const [tipo, severidade] of Object.entries(valores)) {
-    if (!TIPO_OS.inclui(tipo) || !ESCALA_SEVERIDADE.includes(severidade)) continue;
+    if (
+      !tipos.some((t) => t.valor === tipo) ||
+      !ESCALA_SEVERIDADE.includes(severidade)
+    ) {
+      continue;
+    }
     await prisma.configuracao.upsert({
       where: { chave: `${PREFIXO}${tipo}` },
       create: {
         chave: `${PREFIXO}${tipo}`,
         valor: severidade,
-        descricao: `Severidade inicial de OS do tipo ${TIPO_OS.rotulo(tipo)}`,
+        descricao: `Severidade inicial de OS do tipo ${rotuloDoTipo(tipos, tipo)}`,
       },
       update: { valor: severidade },
     });

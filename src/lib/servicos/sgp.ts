@@ -3,7 +3,7 @@ import { ErroDeNegocio } from "./nucleo";
 import { registrarEvento } from "./eventos";
 import { severidadeInicial } from "./severidade";
 import { bairroDaCoordenada } from "./regioes";
-import { TIPO_OS } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 
 /**
  * 2.1 a 2.3 — SINCRONIZAÇÃO COM O SGP.
@@ -208,6 +208,7 @@ export async function sincronizarContratos(
   opcoes: { intervaloMs?: number; usuarioId?: string } = {},
 ): Promise<ResultadoSincronizacao> {
   const intervalo = opcoes.intervaloMs ?? 4000;
+  const tipos = await todosTiposOS();
   const resultado: ResultadoSincronizacao = {
     contratosConsultados: 0,
     chamadosRecebidos: 0,
@@ -327,7 +328,7 @@ export async function sincronizarContratos(
       await registrarEvento({
         ordemServicoId: criada.id,
         tipo: "RECEBIDA",
-        descricao: `Importada do SGP — protocolo ${chamado.oc_protocolo}, ${TIPO_OS.rotulo(tipo).toLowerCase()}.`,
+        descricao: `Importada do SGP — protocolo ${chamado.oc_protocolo}, ${rotuloDoTipo(tipos, tipo).toLowerCase()}.`,
         status,
         usuarioId: opcoes.usuarioId ?? null,
         ocorreuEm: abertaEm,

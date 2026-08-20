@@ -4,6 +4,12 @@ import { limiares } from "@/lib/servicos/consultas";
 import { numero } from "@/lib/utils";
 import { CabecalhoPagina, Cartao, Etiqueta } from "@/components/ui";
 import {
+  FormularioNovoTipoOS,
+  ListaDeTiposOS,
+  type TipoEditavel,
+} from "@/components/formularios-tipo-os";
+import { todosTiposOS } from "@/lib/servicos/tipos-os";
+import {
   FormularioCategoria,
   FormularioEquipe,
   FormularioEstoque,
@@ -15,8 +21,16 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Configuracoes() {
-  const [regras, categorias, estoques, tecnicos, equipes, fornecedores, usuarios] =
-    await Promise.all([
+  const [
+    regras,
+    categorias,
+    estoques,
+    tecnicos,
+    equipes,
+    fornecedores,
+    usuarios,
+    tiposOS,
+  ] = await Promise.all([
       limiares(),
       prisma.categoria.findMany({
         include: { _count: { select: { materiais: true } } },
@@ -36,6 +50,7 @@ export default async function Configuracoes() {
       }),
       prisma.fornecedor.findMany({ orderBy: { nome: "asc" } }),
       prisma.usuario.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+      todosTiposOS(),
     ]);
 
   return (
@@ -77,6 +92,17 @@ export default async function Configuracoes() {
             ))}
           </div>
           <FormularioCategoria />
+        </Cartao>
+
+        {/* 2.5 */}
+        <Cartao
+          titulo="Tipos de ordem de serviço"
+          descricao="O vocabulário do Bloco 2. O código de cada tipo não muda — ele já está gravado nas OS existentes; o que se edita é o nome, a cor e se o tipo continua em uso."
+        >
+          <div className="mb-4">
+            <ListaDeTiposOS tipos={tiposOS as TipoEditavel[]} />
+          </div>
+          <FormularioNovoTipoOS />
         </Cartao>
 
         <div className="grid gap-4 lg:grid-cols-2">

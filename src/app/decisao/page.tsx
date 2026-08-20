@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import { PRIORIDADE_OS, STATUS_OS, TIPO_OS } from "@/lib/dominio";
+import { PRIORIDADE_OS, STATUS_OS } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { painelDeDecisao } from "@/lib/servicos/decisao";
 import { filaInteligente, leituraDaOperacao } from "@/lib/servicos/fila";
 import { sugestoesDeRebalanceamento } from "@/lib/servicos/regioes";
@@ -52,11 +53,12 @@ const ROTULO_RISCO = {
  * num botão que uma pessoa aperta.
  */
 export default async function CentralDeDecisao() {
-  const [painel, leitura, semDono, sugestoes] = await Promise.all([
+  const [painel, leitura, semDono, sugestoes, tipos] = await Promise.all([
     painelDeDecisao(),
     leituraDaOperacao(),
     filaInteligente({ limite: 12, somenteSemResponsavel: true }),
     sugestoesDeRebalanceamento(),
+    todosTiposOS(),
   ]);
 
   const { resumo, emRisco } = painel;
@@ -168,7 +170,7 @@ export default async function CentralDeDecisao() {
                       <span className="text-[var(--atencao)]">sem responsável</span>
                     )}
                     <span className="block text-xs text-[var(--texto-3)]">
-                      {TIPO_OS.rotulo(previsao.tipo)} ·{" "}
+                      {rotuloDoTipo(tipos, previsao.tipo)} ·{" "}
                       {STATUS_OS.rotulo(previsao.status)}
                     </span>
                   </Td>

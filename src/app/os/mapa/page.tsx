@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, List, Repeat } from "lucide-react";
 import { exigir } from "@/lib/sessao";
-import { SEVERIDADE_OS, STATUS_OS_ABERTOS, TIPO_OS } from "@/lib/dominio";
+import { SEVERIDADE_OS, STATUS_OS_ABERTOS } from "@/lib/dominio";
+import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
 import { listarOrdens } from "@/lib/servicos/ordens";
 import { analisePrimaria } from "@/lib/servicos/incidentes";
 import { severidadeEfetiva } from "@/lib/servicos/severidade";
@@ -34,9 +35,10 @@ export const dynamic = "force-dynamic";
 export default async function MapaDeOrdens() {
   await exigir("os.ver");
 
-  const [ordens, analise] = await Promise.all([
+  const [ordens, analise, tipos] = await Promise.all([
     listarOrdens({ status: STATUS_OS_ABERTOS, limite: 500 }),
     analisePrimaria(),
+    todosTiposOS(),
   ]);
 
   const noMapa: OrdemNoMapa[] = ordens
@@ -52,7 +54,7 @@ export default async function MapaDeOrdens() {
         cliente: o.cliente,
         endereco: o.endereco,
         bairro: o.bairro?.nome ?? o.bairroNome,
-        tipo: o.tipo,
+        tipo: rotuloDoTipo(tipos, o.tipo),
         severidade: severidade.efetiva,
         prioridade: o.prioridade,
         latitude: o.latitude!,
@@ -140,7 +142,7 @@ export default async function MapaDeOrdens() {
                     </Etiqueta>
                     <span className="text-sm font-medium">
                       {incidente.ordens.length} OS de{" "}
-                      {TIPO_OS.rotulo(incidente.tipo).toLowerCase()}
+                      {rotuloDoTipo(tipos, incidente.tipo).toLowerCase()}
                     </span>
                     {incidente.bairro && (
                       <span className="text-xs text-[var(--texto-3)]">
@@ -222,7 +224,7 @@ export default async function MapaDeOrdens() {
                     <Td className="text-xs">
                       {cliente.tipos
                         .slice(0, 2)
-                        .map((t) => `${TIPO_OS.rotulo(t.tipo)} (${t.quantidade})`)
+                        .map((t) => `${rotuloDoTipo(tipos, t.tipo)} (${t.quantidade})`)
                         .join(", ")}
                     </Td>
                     <Td className="text-xs text-[var(--texto-3)]">
@@ -263,7 +265,7 @@ export default async function MapaDeOrdens() {
                       {c.total}
                     </Td>
                     <Td className="text-sm">
-                      {TIPO_OS.rotulo(c.tipoPredominante)}{" "}
+                      {rotuloDoTipo(tipos, c.tipoPredominante)}{" "}
                       <span className="text-xs text-[var(--texto-3)]">
                         ({c.doTipo})
                       </span>
