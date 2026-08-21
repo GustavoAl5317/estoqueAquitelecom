@@ -5,6 +5,40 @@ coisa — inclusive uma sessão futura de assistente.
 
 ---
 
+## 0. Onde estamos — 21/08/2026
+
+O escopo dos quatro blocos está **completo**. O sistema roda na VM como
+serviço, com sincronização automática do SGP, e o cliente (Lucas, da Aqui
+Telecom) está testando em produção com dados reais.
+
+**Neste momento o serviço está fora do ar** por um build incompleto. O último
+passo pendente, na VM:
+
+```bash
+cd /root/estoqueAquitelecom
+systemctl stop estoque
+npm run build          # tem que terminar com "✓ Compiled successfully"
+systemctl start estoque
+```
+
+O `git pull` e o `npx prisma generate` já foram feitos; falta só o build. Nada
+de dado foi perdido — o banco não é tocado pelo build, e os 5 técnicos e as 24
+OS vinculadas continuam lá.
+
+### A regra que mais custou tempo nesta sessão
+
+**Todo `npm run build` termina com `systemctl restart estoque`.** O build só
+troca arquivos no disco; quem responde é o processo, e ele só relê tudo ao
+reiniciar. Servir um build novo com processo antigo dá CSS quebrado (500 nos
+chunks) — aconteceu duas vezes, com uma hora de diagnóstico cada.
+
+E **`prisma generate` vem antes de `npm run build`**, sempre que a migração
+mexer no schema. Invertendo, o TypeScript não enxerga os campos novos e o build
+morre com `Property 'x' does not exist on type` — que parece erro de código e é
+ordem de comando.
+
+---
+
 ## 1. O que é
 
 Plataforma operacional para a **Aqui Telecom**, provedor de internet em
@@ -186,7 +220,10 @@ O chamado 260815112000 **ainda precisa ser cancelado**.
 | `npm run traccar -- --importar` | traz os aparelhos reais |
 | `npm run traccar -- --loop 60` | sincroniza posições |
 | `npm run sgp -- --path api/... --form` | sonda a API |
-| `npm run sgp:sync -- --contratos N,N` | importa OS |
+| `npm run sgp:sync -- --contratos N,N` | importa OS de contratos específicos |
+| `npm run sgp:sync` | reconsulta só os contratos já conhecidos |
+| `npm run tecnicos:sgp` | lista responsáveis do SGP sem cadastro (simulação) |
+| `npm run tecnicos:sgp -- --aplicar` | cadastra cada um e vincula as OS dele |
 
 ### Acesso da base de demonstração
 
@@ -204,29 +241,78 @@ dados são fictícios — ela some sozinha após `db:limpar`.
 
 ### Git
 
-`https://github.com/GustavoAl5317/estoqueAquitelecom` — branch `main`.
+`https://github.com/GustavoAl5317/estoqueAquitelecom` — branch `main`, que é o
+que a VM acompanha. Último commit desta sessão: `742b90c`.
+
+O trabalho de 19–21/08 saiu de um worktree
+(`.claude/worktrees/completeness-check-f22bff`, branch
+`claude/completeness-check-f22bff`) e foi mesclado em `main`. Quem continuar
+pode trabalhar direto em `main` ou abrir outro worktree — o repositório
+principal fica em `C:\Users\GustavoAlvesSantana\Documents\estoque`.
 
 O `.gitignore` cobre `.env*`, `*.db`, `sgp-amostra*.json` e as pastas de
 ferramentas de editor. **Nunca commitar `.env` nem amostras da API** — elas
 contêm dados de cliente.
 
+`core.autocrlf=true` na máquina do Gustavo: o repositório guarda LF, o disco
+tem CRLF. Ao editar arquivo por script, escreva LF — o git normaliza.
+
 ### VM
 
-Debian 11, host `005-DB`, projeto em `/root/estoqueAquitelecom`.
-Node instalado via NodeSource.
+Debian 11, host `005-DB`, IP `181.191.160.26`, projeto em
+`/root/estoqueAquitelecom`. Node via NodeSource. Banco SQLite em
+`prisma/dev.db` — caminho **relativo**, então tudo que fala com o banco precisa
+rodar com o diretório do projeto como cwd.
 
-Ainda **não há systemd, nginx nem HTTPS** aplicados na VM. Roda com
-`npm run dev` em terminal aberto e banco SQLite. Os arquivos prontos para
-mudar isso estão em `implantacao/` — falta executá-los lá.
-
-**Armadilha recorrente:** `prisma migrate deploy` aplica a migração mas **não
-regenera o cliente**. Depois de `git pull` com migração nova:
+**O systemd está aplicado.** O serviço é `estoque.service`, roda `next start`
+como root, com `WorkingDirectory=/root/estoqueAquitelecom` e `Restart=always`.
 
 ```bash
-npx prisma generate && npm run db:seed
+systemctl status estoque        # estado
+journalctl -u estoque -f        # logs
+systemctl restart estoque       # obrigatório depois de todo build
 ```
 
-O seed hoje detecta isso e diz qual tabela falta.
+Responde em `http://181.191.160.26:3000`. **Ainda não há nginx nem HTTPS** —
+falta um domínio apontando para o IP. Os arquivos estão prontos em
+`implantacao/`; o passo a passo está no `implantacao/README.md`.
+
+> Enquanto for HTTP puro, `HTTPS_ATIVO` fica **desligado** no `.env`. O cookie
+> de sessão só é marcado `Secure` com essa variável ligada, e cookie `Secure`
+> sobre HTTP nunca volta ao navegador — todo clique parece deslogado. Foi o que
+> aconteceu em 19/08.
+
+### Rotinas automáticas na VM
+
+Duas linhas no `crontab -e` do root:
+
+```
+*/15 * * * * cd /root/estoqueAquitelecom && npm run sgp:sync >> /var/log/estoque-sgp-sync.log 2>&1
+0 3 * * *    cd /root/estoqueAquitelecom && npm run sgp:sync -- --de 1 --ate 6000 >> /var/log/estoque-sgp-varredura.log 2>&1
+```
+
+A de 15 minutos reconsulta os contratos **já conhecidos** — pega OS nova de
+cliente que já existe aqui. A das 3h varre de 1 a 6000 tentando descobrir
+contrato novo, e leva ~6h30 por causa do intervalo de 4 s entre chamadas.
+
+**Backup ainda não instalado.** `implantacao/backup.sh` está pronto, falta
+copiar e agendar.
+
+### Atualizar a VM depois de um `git pull`
+
+```bash
+cd /root/estoqueAquitelecom
+systemctl stop estoque
+git pull
+npm ci                      # só se package.json mudou
+npx prisma migrate deploy   # só se há migração nova
+npx prisma generate         # SEMPRE que houve migração — antes do build
+npm run build               # esperar "✓ Compiled successfully"
+systemctl start estoque
+```
+
+Pular o `generate` quebra o build; pular o `restart` mantém a versão velha no
+ar com o CSS quebrado. As duas coisas já morderam.
 
 ### `.env`
 
@@ -271,16 +357,54 @@ Três decisões tomadas aí que vale conhecer antes de mexer:
    importar, e com ele a OS que chega do SGP só com coordenada encontra sozinha
    a área e o responsável.
 
+### O que saiu do retorno do cliente — 20 e 21/08
+
+O Lucas testou em produção e o retorno dele virou outra rodada:
+
+| Item | Onde |
+|---|---|
+| Filtro por data, separando **abertura** de **agendamento** | `/os` e `/os/quadro` |
+| Tipo de OS deixou de ser fixo em código e virou cadastro | `/configuracoes` |
+| Responsável do SGP guardado mesmo sem técnico cadastrado | `OrdemServico.tecnicoSgpNome` |
+| Cadastro de técnico recolhe as OS que já eram dele | `vinculo-tecnico.ts`, `npm run tecnicos:sgp` |
+| Vínculo usuário↔técnico pela tela | `/usuarios` |
+| Menu do técnico enxugado de 13 para 6 itens | `navegacao.tsx`, campo `campo: true` |
+| Cadastro de local de estoque trazido para onde se procura | `/locais` |
+
+Quatro defeitos corrigidos no caminho, com a causa registrada em cada commit:
+
+1. **Cookie `Secure` sem HTTPS** — a sessão caía no primeiro clique.
+2. **Datas ISO do SGP viravam `null`** — `agendadaPara` sempre vazia.
+3. **`backdrop-filter` no cabeçalho prendia o menu do celular** a uma faixa de
+   50 px. `backdrop-filter` cria bloco de contenção para `fixed`, igual a
+   `transform`; o painel passou a sair por portal ancorado no `body`.
+4. **A sincronização desfazia o andamento local.** O SGP mantém a OS "Aberta"
+   durante todo o atendimento; copiar o status a cada rodada devolvia o cartão
+   que o supervisor tinha movido. Agora só o encerramento vindo do SGP vale.
+
 ### Fora do escopo, mas necessário para produção
 
-Os arquivos e o passo a passo estão em `implantacao/` — systemd, nginx com
-HTTPS e backup são cópia de arquivo; só o PostgreSQL exige janela.
+- **HTTPS** — `implantacao/nginx.conf`, depende de um domínio apontando para o IP
+- **Backup** — `implantacao/backup.sh`, pronto e não instalado
+- **SQLite → PostgreSQL** — `implantacao/README.md`, seção 4; única frente que
+  exige janela de manutenção
+- **Rotação das credenciais** que passaram pelo chat
+- ~~systemd~~ — aplicado em 19/08
 
-- SQLite → PostgreSQL (`implantacao/README.md`, seção 4)
-- systemd (`implantacao/estoque.service`)
-- nginx e HTTPS (`implantacao/nginx.conf`)
-- rotina de backup (`implantacao/backup.sh`)
-- rotação das credenciais que passaram pelo chat
+### Duas frentes em aberto, com decisão pendente
+
+**Descoberta de contratos.** O SGP não lista OS: só responde por contrato. A
+varredura de 1 a 6000 leva ~6h30 e roda 1× por dia, então **OS de contrato novo
+pode demorar até um dia para aparecer**. Duas saídas, e a segunda é a boa:
+
+- varrer de 6 em 6 horas — mais chamadas ao SGP o dia todo;
+- pedir ao TSMX a **faixa real de contratos ativos**. Se forem 800 em vez de
+  6000, a varredura cai para ~1 h e pode rodar de hora em hora.
+
+**Nem toda OS tem responsável no SGP.** A premissa do cliente era que sim;
+confirmado que não — a OS 31371, contrato 5348, voltou com
+`os_tecnico_responsavel` vazio. Essas precisam ser despachadas, no SGP ou aqui
+pelo Quadro.
 
 ---
 
@@ -289,6 +413,9 @@ HTTPS e backup são cópia de arquivo; só o PostgreSQL exige janela.
 | O quê | Com quem |
 |---|---|
 | Cancelar o chamado `260815112000`, contrato 5510 | Lucas |
+| Faixa real de contratos ativos, para a varredura parar de tentar 6000 | TSMX |
+| Domínio apontando para `181.191.160.26`, para o HTTPS | cliente |
+| Criar o login de cada técnico em `/usuarios`, com o vínculo | Gustavo |
 | Confirmar se os celulares rastreados são pessoais ou corporativos | cliente |
 | Dizer o que são "T-40 VERDE/AZUL", "telefone 55", "Telefone Celta", "AGILE" | cliente |
 | Carga inicial de materiais e saldo | cliente — decidiu que será manual |
