@@ -8,6 +8,7 @@ import {
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { usuarioAtual } from "@/lib/sessao";
+import { podeFazer } from "@/lib/permissoes";
 import { ErroDeNegocio } from "@/lib/servicos/nucleo";
 import {
   criarCategoria,
@@ -256,6 +257,19 @@ export async function acaoCriarTecnico(
   dados: FormData,
 ): Promise<ResultadoTecnico> {
   const usuario = await usuarioAtual();
+
+  /**
+   * A barreira de capacidade tem que estar aqui, não só no layout.
+   *
+   * O layout protege a renderização de `/configuracoes`; a server action é um
+   * POST que qualquer sessão autenticada consegue disparar sem passar por
+   * aquela tela. E esta em particular não cadastra só uma pessoa: ela reatribui
+   * em lote as OS que estavam com aquele nome no SGP.
+   */
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite cadastrar técnicos." };
+  }
+
   const nome = String(dados.get("nome") ?? "").trim();
 
   // veio do "sim" da pergunta de nome parecido
@@ -285,7 +299,11 @@ export async function acaoCriarTecnico(
   if (resultado.ok && resultado.dados) {
     // "-" é o "não, é outra pessoa": cadastra sem recolher OS de ninguém
     const alvo = nomeConfirmado === "-" ? nome : nomeConfirmado || nome;
-    const { vinculadas } = await vincularOrdensDoNome(resultado.dados.id, alvo);
+    const { vinculadas } = await vincularOrdensDoNome(
+      resultado.dados.id,
+      alvo,
+      usuario.id,
+    );
     for (const caminho of TELAS_COM_TECNICO) revalidatePath(caminho);
     return { ...resultado, vinculadas };
   }
@@ -298,6 +316,11 @@ export async function acaoCriarEquipe(
   dados: FormData,
 ): Promise<Resultado> {
   const usuario = await usuarioAtual();
+  // mesma tela, mesma barreira que o cadastro de técnico
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite cadastrar equipes." };
+  }
+
   return executar(
     () =>
       criarEquipe(

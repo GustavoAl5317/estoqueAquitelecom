@@ -97,7 +97,7 @@ async function main() {
       criados += 1;
     }
 
-    const r = await vincularOrdensDoNome(tecnicoId, pendente.nome);
+    const r = await vincularOrdensDoNome(tecnicoId, pendente.nome, admin.id);
     vinculadas += r.vinculadas;
     console.log(
       `  ${nome.padEnd(24)} ${String(r.vinculadas).padStart(3)} OS vinculada(s)`,

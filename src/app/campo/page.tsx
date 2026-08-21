@@ -5,8 +5,8 @@ import { exigir } from "@/lib/sessao";
 import {
   PRIORIDADE_OS,
   SITUACAO_SLA,
-  STATUS_OS,
   STATUS_OS_ABERTOS,
+  STATUS_TECNICO,
 } from "@/lib/dominio";
 import { listarOrdens, prazoLegivel } from "@/lib/servicos/ordens";
 import { rotuloDoTipo, todosTiposOS } from "@/lib/servicos/tipos-os";
@@ -79,7 +79,26 @@ export default async function MeuDia() {
   const atual =
     emAndamento ?? ordens.find((o) => o.id === sugerida?.ordemId) ?? ordens[0];
 
-  const demais = ordens.filter((o) => o.id !== atual?.id);
+  /**
+   * A lista abaixo segue o roteiro, não a prioridade.
+   *
+   * O cartão promete "na ordem sugerida pelo roteiro" e cada linha mostra a
+   * chegada estimada. Vindo direto de `listarOrdens`, que ordena por prioridade,
+   * os horários saíam fora de sequência — "chegada ~14:20" acima de
+   * "chegada ~10:05" — e o técnico não tem como saber qual das duas leituras
+   * vale. OS sem coordenada não entra no roteiro e fica no fim, com a ordem de
+   * prioridade preservada entre elas.
+   */
+  const posicaoNoRoteiro = new Map(
+    roteiro?.paradas.map((parada, indice) => [parada.ordemId, indice]) ?? [],
+  );
+  const demais = ordens
+    .filter((o) => o.id !== atual?.id)
+    .sort(
+      (a, b) =>
+        (posicaoNoRoteiro.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (posicaoNoRoteiro.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
   const emRisco = ordens.filter(
     (o) => o.situacao === "ESTOURADO" || o.situacao === "ATENCAO",
   ).length;
@@ -95,8 +114,8 @@ export default async function MeuDia() {
         }
         acoes={
           tecnico && (
-            <Etiqueta tom={STATUS_OS.tom(tecnico.status)} ponto>
-              {tecnico.status.replaceAll("_", " ").toLowerCase()}
+            <Etiqueta tom={STATUS_TECNICO.tom(tecnico.status)} ponto>
+              {STATUS_TECNICO.rotulo(tecnico.status)}
             </Etiqueta>
           )
         }

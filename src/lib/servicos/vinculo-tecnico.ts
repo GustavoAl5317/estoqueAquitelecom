@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { normalizar } from "@/lib/utils";
 import { STATUS_OS_ENCERRADOS } from "@/lib/dominio";
+import { auditar } from "./nucleo";
+import { registrarEvento } from "./eventos";
 
 /**
  * 2.4 — CASAR O RESPONSÁVEL DO SGP COM O TÉCNICO CADASTRADO.
@@ -23,6 +25,15 @@ import { STATUS_OS_ENCERRADOS } from "@/lib/dominio";
 function chave(nome: string) {
   return normalizar(nome).replace(/\s+/g, " ").trim();
 }
+
+/**
+ * A mesma chave, para quem agrupa OS por nome de responsável.
+ *
+ * O quadro por técnico precisa dela: se agrupasse por outro critério, "JOÃO
+ * SILVA" e "João  Silva" virariam duas faixas aqui e um técnico só na hora do
+ * vínculo.
+ */
+export { chave as chaveDeNome };
 
 /** só as palavras que identificam a pessoa — "de", "da", "dos" não contam */
 const LIGACOES = new Set(["de", "da", "do", "das", "dos", "e"]);
@@ -111,20 +122,27 @@ export async function sugerirVinculo(nomeDoTecnico: string) {
  * Só toca em OS sem responsável: se alguém já atribuiu na mão, essa decisão
  * vale mais que o texto que veio do SGP. OS aberta e sem responsável passa a
  * "atribuída", que é o que o próprio domínio exige de uma OS com técnico.
+ *
+ * O `usuarioId` é obrigatório porque isto reatribui trabalho em lote. Sem ele,
+ * a linha do tempo da OS mostrava o responsável mudando sozinho, sem quem nem
+ * quando — que é exatamente a pergunta feita quando o trabalho troca de mãos.
  */
-export async function vincularOrdensDoNome(tecnicoId: string, nome: string) {
+export async function vincularOrdensDoNome(
+  tecnicoId: string,
+  nome: string,
+  usuarioId: string,
+) {
   const alvo = chave(nome);
 
   const candidatas = await prisma.ordemServico.findMany({
     where: { tecnicoId: null, tecnicoSgpNome: { not: null } },
-    select: { id: true, tecnicoSgpNome: true, status: true },
+    select: { id: true, numero: true, tecnicoSgpNome: true, status: true },
   });
 
-  const ids = candidatas
-    .filter((o) => chave(o.tecnicoSgpNome!) === alvo)
-    .map((o) => o.id);
+  const alvos = candidatas.filter((o) => chave(o.tecnicoSgpNome!) === alvo);
+  if (!alvos.length) return { vinculadas: 0 };
 
-  if (!ids.length) return { vinculadas: 0 };
+  const ids = alvos.map((o) => o.id);
 
   await prisma.ordemServico.updateMany({
     where: { id: { in: ids } },
@@ -136,6 +154,34 @@ export async function vincularOrdensDoNome(tecnicoId: string, nome: string) {
     where: { id: { in: ids }, status: "ABERTA" },
     data: { status: "ATRIBUIDA" },
   });
+
+  const tecnico = await prisma.tecnico.findUnique({
+    where: { id: tecnicoId },
+    select: { nome: true },
+  });
+
+  for (const ordem of alvos) {
+    const virouAtribuida = ordem.status === "ABERTA";
+    const novoStatus = virouAtribuida ? "ATRIBUIDA" : ordem.status;
+
+    await auditar(prisma, {
+      entidade: "OrdemServico",
+      entidadeId: ordem.id,
+      acao: "EDICAO",
+      descricao: `OS ${ordem.numero}: responsável "${ordem.tecnicoSgpNome}" do SGP vinculado ao cadastro de ${tecnico?.nome ?? "técnico"}.`,
+      usuarioId,
+      antes: { tecnico: null, tecnicoSgpNome: ordem.tecnicoSgpNome, status: ordem.status },
+      depois: { tecnico: tecnico?.nome ?? null, status: novoStatus },
+    });
+
+    await registrarEvento({
+      ordemServicoId: ordem.id,
+      tipo: "ATRIBUIDA",
+      descricao: `Atribuída a ${tecnico?.nome ?? "técnico"} pelo nome do responsável no SGP ("${ordem.tecnicoSgpNome}").`,
+      status: novoStatus,
+      usuarioId,
+    });
+  }
 
   return { vinculadas: ids.length };
 }

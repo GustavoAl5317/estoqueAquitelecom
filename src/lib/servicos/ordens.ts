@@ -3,6 +3,7 @@ import { auditar, ErroDeNegocio, type Tx } from "./nucleo";
 import { registrarEvento } from "./eventos";
 import { fecharPermanencia } from "./geofence";
 import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
+import { chaveDeNome } from "./vinculo-tecnico";
 import {
   COLUNAS_QUADRO,
   STATUS_OS,
@@ -725,6 +726,22 @@ export async function quadroPorRecorte(
 
   const identificar = (ordem: OrdemDaLista) => {
     if (recorte === "TECNICO") {
+      /**
+       * 2.4 — o responsável do SGP tem faixa própria, mesmo sem cadastro aqui.
+       *
+       * O cartão já mostra "FULANO · do SGP", e a lista de OS também. Só o
+       * agrupamento olhava para `tecnicoId` e jogava todos eles em "Sem
+       * responsável" — uma faixa que dizia "ninguém" com dez cartões
+       * nominalmente atribuídos dentro. Quando o técnico for cadastrado, o
+       * vínculo recolhe essas OS e a faixa passa a ser a dele.
+       */
+      if (!ordem.tecnicoId && ordem.tecnicoSgpNome) {
+        return {
+          chave: `sgp:${chaveDeNome(ordem.tecnicoSgpNome)}`,
+          rotulo: ordem.tecnicoSgpNome,
+          detalhe: "do SGP · sem cadastro aqui",
+        };
+      }
       return {
         chave: ordem.tecnicoId ?? "",
         rotulo: ordem.tecnico?.nome ?? "Sem responsável",
@@ -757,6 +774,31 @@ export async function quadroPorRecorte(
     const grupo = grupos.get(chave) ?? { rotulo, detalhe, ordens: [] };
     grupo.ordens.push(ordem);
     grupos.set(chave, grupo);
+  }
+
+  /**
+   * 3.25 — técnico sem nenhuma OS continua aparecendo.
+   *
+   * O recorte existe para comparar carga: "quem está com dez enquanto o colega
+   * está com duas". Quem está com zero é justamente a resposta que o supervisor
+   * veio buscar, e sumia da tela por não ter cartão nenhum para formar faixa.
+   *
+   * Só vale quando a consulta não pediu um técnico ou uma equipe: aí a pergunta
+   * já é sobre alguém específico, e o resto da operação não vem ao caso.
+   */
+  if (recorte === "TECNICO" && !filtro.tecnicoId && !filtro.equipeId) {
+    const tecnicos = await prisma.tecnico.findMany({
+      where: { ativo: true },
+      select: { id: true, nome: true, equipe: { select: { nome: true } } },
+    });
+    for (const tecnico of tecnicos) {
+      if (grupos.has(tecnico.id)) continue;
+      grupos.set(tecnico.id, {
+        rotulo: tecnico.nome,
+        detalhe: tecnico.equipe?.nome ?? null,
+        ordens: [],
+      });
+    }
   }
 
   const faixas = [...grupos.entries()].map(([chave, grupo]) => {

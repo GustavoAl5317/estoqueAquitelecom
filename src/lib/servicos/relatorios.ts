@@ -8,6 +8,7 @@ import {
   STATUS_OS,
   STATUS_OS_ABERTOS,
   STATUS_SERIAL,
+  STATUS_TECNICO,
   TIPO_ENTRADA,
   TIPO_MOVIMENTACAO,
 } from "@/lib/dominio";
@@ -815,7 +816,7 @@ const RELATORIOS_OS: Relatorio[] = [
             t.nome,
             t.matricula,
             texto(t.equipe?.nome),
-            t.status.replaceAll("_", " ").toLowerCase(),
+            STATUS_TECNICO.rotulo(t.status),
             String(abertas.length),
             String(abertas.filter((o) => o.prioridade === "P1").length),
             String(
