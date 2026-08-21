@@ -585,7 +585,19 @@ export async function moverOrdem(
     await fecharPermanencia(ordem.id, atualizada.concluidaEm ?? new Date());
   }
 
-  // 3.11 — o status do técnico acompanha o da OS enquanto ele está nela
+  /**
+   * 3.11 — o status do técnico acompanha o da OS enquanto ele está nela.
+   *
+   * Menos com a jornada encerrada. `Tecnico.status` carrega duas coisas no
+   * mesmo campo: em que pé está o atendimento e se a pessoa está em expediente.
+   * `FORA_JORNADA` é o que desliga o rastreamento (3.5), e espelhar por cima
+   * disso reabria a jornada sozinho — bastava fechar no fim do dia a OS que
+   * tinha ficado pendente, ou um supervisor arrastar o cartão de quem já foi
+   * embora, e o navegador voltava a mandar posição. Ninguém tinha pedido isso.
+   *
+   * Quem abre e fecha jornada é a própria pessoa, em `alternarJornada`. O
+   * `updateMany` é o que deixa a condição e a escrita na mesma ida ao banco.
+   */
   const espelho: Record<string, string> = {
     EM_DESLOCAMENTO: "EM_DESLOCAMENTO",
     EM_ATENDIMENTO: "EM_ATENDIMENTO",
@@ -594,8 +606,8 @@ export async function moverOrdem(
     CANCELADA: "DISPONIVEL",
   };
   if (ordem.tecnicoId && espelho[dados.status]) {
-    await prisma.tecnico.update({
-      where: { id: ordem.tecnicoId },
+    await prisma.tecnico.updateMany({
+      where: { id: ordem.tecnicoId, status: { not: "FORA_JORNADA" } },
       data: { status: espelho[dados.status] },
     });
   }
