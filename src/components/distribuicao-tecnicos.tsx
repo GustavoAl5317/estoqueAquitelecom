@@ -1,0 +1,191 @@
+"use client";
+
+import {
+  acaoAlternarDistribuicaoAutomatica,
+  acaoDistribuirAgora,
+  acaoSalvarDistribuicaoTecnico,
+} from "@/app/acoes/operacao";
+import { FormularioAcao, BotaoEnviar } from "./formulario";
+import { Aviso, Etiqueta } from "./ui";
+
+export type TecnicoDistribuicao = {
+  id: string;
+  nome: string;
+  recebeAutomatico: boolean;
+  tiposAtendidos: string[];
+};
+
+export type TipoDisponivel = { id: string; rotulo: string };
+
+/**
+ * 4.11 — QUEM RECEBE O QUÊ.
+ *
+ * A tela é a regra escrita por extenso, porque a regra tem duas metades que se
+ * conversam e ninguém acerta isso de cabeça: designar alguém a um tipo o torna
+ * exclusivo daquele tipo **e** o tira do rodízio dos demais. Em vez de explicar
+ * isso num texto de ajuda, a tela mostra o resultado — a mesma frase que a
+ * operação usaria para descrever o combinado.
+ */
+export function DistribuicaoDeTecnicos({
+  tecnicos,
+  tipos,
+  ligada,
+}: {
+  tecnicos: TecnicoDistribuicao[];
+  tipos: TipoDisponivel[];
+  ligada: boolean;
+}) {
+  const noRodizio = tecnicos.filter(
+    (t) => t.recebeAutomatico && t.tiposAtendidos.length === 0,
+  );
+  const foraDoRodizio = tecnicos.filter((t) => !t.recebeAutomatico);
+
+  const porTipo = tipos.map((tipo) => ({
+    ...tipo,
+    donos: tecnicos.filter(
+      (t) => t.recebeAutomatico && t.tiposAtendidos.includes(tipo.id),
+    ),
+  }));
+  const exclusivos = porTipo.filter((t) => t.donos.length > 0);
+
+  return (
+    <div className="space-y-5">
+      {/*
+        A chave geral vem antes da regra: de nada adianta acertar quem recebe o
+        quê se a automação está desligada, e esse é o tipo de detalhe que faz
+        alguém passar meia hora conferindo cadastro à toa.
+      */}
+      <FormularioAcao
+        acao={acaoAlternarDistribuicaoAutomatica}
+        className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--borda)] p-3"
+      >
+        <input type="hidden" name="ligar" value={ligada ? "0" : "1"} />
+        <span className="flex items-center gap-2 text-sm">
+          <Etiqueta tom={ligada ? "positivo" : "neutro"} ponto>
+            {ligada ? "ligada" : "desligada"}
+          </Etiqueta>
+          {ligada
+            ? "A OS que chega do SGP sem responsável já sai com um."
+            : "As OS continuam chegando sem responsável até alguém distribuir."}
+        </span>
+        <BotaoEnviar variante={ligada ? "sutil" : "primario"}>
+          {ligada ? "Desligar" : "Ligar distribuição automática"}
+        </BotaoEnviar>
+      </FormularioAcao>
+
+      {/* o resumo primeiro: é o que se confere antes de mexer */}
+      <div className="rounded-lg bg-[var(--superficie-2)] p-3 text-sm">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--texto-3)]">
+          Como está hoje
+        </p>
+
+        {exclusivos.map((tipo) => (
+          <p key={tipo.id} className="mb-1">
+            <strong>{tipo.rotulo}</strong> → só{" "}
+            {tipo.donos.map((d) => d.nome).join(", ")}
+          </p>
+        ))}
+
+        <p className="mb-1">
+          <strong>Demais tipos</strong> →{" "}
+          {noRodizio.length
+            ? noRodizio.map((t) => t.nome).join(", ")
+            : "ninguém — nenhuma OS será distribuída"}
+        </p>
+
+        {foraDoRodizio.length > 0 && (
+          <p className="text-[var(--texto-2)]">
+            Fora do rodízio: {foraDoRodizio.map((t) => t.nome).join(", ")}
+          </p>
+        )}
+      </div>
+
+      {noRodizio.length === 0 && (
+        <Aviso tom="atencao" titulo="Ninguém no rodízio geral">
+          Toda OS que não for de um tipo com dono definido vai continuar sem
+          responsável. Deixe pelo menos um técnico marcado como &quot;recebe OS
+          automaticamente&quot; e sem nenhum tipo específico.
+        </Aviso>
+      )}
+
+      <ul className="divide-y divide-[var(--borda)]">
+        {tecnicos.map((tecnico) => (
+          <li key={tecnico.id} className="py-3">
+            <FormularioAcao
+              acao={acaoSalvarDistribuicaoTecnico}
+              aoConcluir={<Aviso tom="positivo">Distribuição atualizada.</Aviso>}
+            >
+              <input type="hidden" name="tecnicoId" value={tecnico.id} />
+
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{tecnico.nome}</span>
+                {tecnico.recebeAutomatico ? (
+                  <Etiqueta tom={tecnico.tiposAtendidos.length ? "roxo" : "positivo"}>
+                    {tecnico.tiposAtendidos.length
+                      ? "especialista"
+                      : "rodízio geral"}
+                  </Etiqueta>
+                ) : (
+                  <Etiqueta tom="neutro">não recebe</Etiqueta>
+                )}
+              </div>
+
+              <label className="mb-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="recebeAutomatico"
+                  defaultChecked={tecnico.recebeAutomatico}
+                  className="size-4"
+                />
+                Recebe OS automaticamente
+              </label>
+
+              <p className="mb-1.5 text-xs text-[var(--texto-3)]">
+                Tipos que atende — deixe tudo desmarcado para ele ficar no
+                rodízio geral:
+              </p>
+              <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                {tipos.map((tipo) => (
+                  <label
+                    key={tipo.id}
+                    className="flex items-center gap-1.5 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="tipos"
+                      value={tipo.id}
+                      defaultChecked={tecnico.tiposAtendidos.includes(tipo.id)}
+                      className="size-4"
+                    />
+                    {tipo.rotulo}
+                  </label>
+                ))}
+              </div>
+
+              <BotaoEnviar variante="secundario">Salvar</BotaoEnviar>
+            </FormularioAcao>
+          </li>
+        ))}
+      </ul>
+
+      <div className="border-t border-[var(--borda)] pt-4">
+        <p className="mb-2 text-sm text-[var(--texto-2)]">
+          A regra acima vale para as OS que chegarem do SGP. As que já estão
+          abertas sem responsável precisam de um empurrão:
+        </p>
+        <FormularioAcao
+          acao={acaoDistribuirAgora}
+          aoConcluir={
+            <Aviso tom="positivo">
+              Distribuídas. Confira no quadro de ordens.
+            </Aviso>
+          }
+        >
+          <BotaoEnviar variante="primario">
+            Distribuir as OS abertas agora
+          </BotaoEnviar>
+        </FormularioAcao>
+      </div>
+    </div>
+  );
+}

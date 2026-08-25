@@ -9,6 +9,8 @@ import {
   type TipoEditavel,
 } from "@/components/formularios-tipo-os";
 import { todosTiposOS } from "@/lib/servicos/tipos-os";
+import { parametros } from "@/lib/servicos/parametros";
+import { DistribuicaoDeTecnicos } from "@/components/distribuicao-tecnicos";
 import {
   FormularioCategoria,
   FormularioEquipe,
@@ -41,7 +43,7 @@ export default async function Configuracoes() {
         orderBy: { nome: "asc" },
       }),
       prisma.tecnico.findMany({
-        include: { equipe: true },
+        include: { equipe: true, tiposAtendidos: { select: { id: true } } },
         orderBy: { nome: "asc" },
       }),
       prisma.equipe.findMany({
@@ -52,6 +54,8 @@ export default async function Configuracoes() {
       prisma.usuario.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
       todosTiposOS(),
     ]);
+
+  const config = await parametros();
 
   return (
     <>
@@ -199,6 +203,24 @@ export default async function Configuracoes() {
             </div>
           </Cartao>
         </div>
+
+        <Cartao
+          titulo="Distribuição automática de OS"
+          descricao="Quem entra no rodízio e quem atende cada tipo. A ordem que chega do SGP sem responsável é distribuída por distância, carga, material em posse e região."
+        >
+          <DistribuicaoDeTecnicos
+            ligada={config.distribuicaoAutomatica === 1}
+            tipos={tiposOS
+              .filter((t) => t.ativo)
+              .map((t) => ({ id: t.id, rotulo: t.rotulo }))}
+            tecnicos={tecnicos.map((t) => ({
+              id: t.id,
+              nome: t.nome,
+              recebeAutomatico: t.recebeAutomatico,
+              tiposAtendidos: t.tiposAtendidos.map((x) => x.id),
+            }))}
+          />
+        </Cartao>
 
         <Cartao
           titulo="Fornecedores"

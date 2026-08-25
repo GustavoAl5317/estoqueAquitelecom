@@ -81,6 +81,17 @@ model Tecnico {
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
 
+  /// 4.11 — entra no rodízio da distribuição automática. Desligar tira a
+  /// pessoa do sorteio sem inativar o cadastro dela: quem coordena continua
+  /// existindo no sistema, com histórico e login, mas não recebe OS.
+  recebeAutomatico Boolean @default(true)
+
+  /// 4.11 — tipos de OS que esta pessoa atende. Vazio significa "o que
+  /// aparecer": o técnico fica no rodízio geral. Preenchido, ele vira
+  /// especialista — só recebe esses tipos, e esses tipos só vão para quem
+  /// foi designado a eles.
+  tiposAtendidos TipoOS[] @relation("TipoOSTecnico")
+
   equipe   Equipe? @relation(fields: [equipeId], references: [id])
   equipeId String?
 
@@ -182,6 +193,10 @@ model TipoOS {
   ativo    Boolean  @default(true)
   ordem    Int      @default(0)
   criadoEm DateTime @default(now())
+
+  /// 4.11 — quem atende este tipo. Vazio: qualquer técnico do rodízio geral.
+  /// Preenchido: só estes, e eles saem do rodízio dos demais tipos.
+  tecnicos Tecnico[] @relation("TipoOSTecnico")
 }
 
 model Fornecedor {

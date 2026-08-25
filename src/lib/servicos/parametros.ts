@@ -28,6 +28,15 @@ export type Parametros = {
    * decidir pela pessoa.
    */
   moverAoChegar: number;
+  /**
+   * 4.11 — 1 distribui a OS sozinho assim que ela chega sem responsável; 0
+   * mantém a recomendação como sugestão na fila.
+   *
+   * Começa em 0 pelo mesmo motivo de `moverAoChegar`: ligar sozinho uma
+   * automação que mexe no trabalho de gente é decisão de quem responde pela
+   * operação, não efeito colateral de uma atualização.
+   */
+  distribuicaoAutomatica: number;
 };
 
 export const PARAMETROS_PADRAO: Parametros = {
@@ -41,6 +50,7 @@ export const PARAMETROS_PADRAO: Parametros = {
   minutosParadaSuspeita: 40,
   raioChegadaMetros: 150,
   moverAoChegar: 0,
+  distribuicaoAutomatica: 0,
 };
 
 const PREFIXO = "operacao.";
@@ -85,10 +95,11 @@ export type CandidatoScore = {
   tecnicoId: string;
   tecnicoNome: string;
   /** o que revelou a posição: a placa do carro ou o nome do aparelho */
-  referencia: string;
-  /** CELULAR | VEICULO — quanto confiar na coordenada */
-  fonte: "CELULAR" | "VEICULO";
-  distanciaKm: number;
+  referencia: string | null;
+  /** CELULAR | VEICULO — quanto confiar na coordenada; null quando não há posição */
+  fonte: "CELULAR" | "VEICULO" | null;
+  /** null quando não se sabe onde o técnico está */
+  distanciaKm: number | null;
   temMaterial: boolean;
   faltando: string[];
   osAbertas: number;
@@ -106,9 +117,10 @@ export function calcularScore(
   candidato: {
     tecnicoId: string;
     tecnicoNome: string;
-    referencia: string;
-    fonte: "CELULAR" | "VEICULO";
-    distanciaKm: number;
+    referencia: string | null;
+    fonte: "CELULAR" | "VEICULO" | null;
+    /** null quando não se sabe onde ele está */
+    distanciaKm: number | null;
     temMaterial: boolean;
     faltando: string[];
     osAbertas: number;
@@ -120,15 +132,32 @@ export function calcularScore(
 ): CandidatoScore {
   const motivos: string[] = [];
 
-  // distância: nota 1 no raio de atuação, caindo até 0 ao dobro dele
+  /**
+   * 4.11 — sem posição, a distância sai da conta em vez de valer zero.
+   *
+   * Antes o técnico sem rastreador era simplesmente descartado, e numa
+   * operação onde os aparelhos ainda não foram classificados isso significa
+   * descartar todo mundo — o sistema não recomendava ninguém para nenhuma OS.
+   *
+   * Zerar a nota também não serve: puniria quem não tem aparelho por algo que
+   * não é escolha dele. Tirar o peso do numerador e do denominador faz os
+   * outros quatro critérios se redistribuírem, e dois técnicos sem posição
+   * continuam comparáveis entre si por carga, material e região.
+   */
+  const temPosicao = candidato.distanciaKm !== null;
   const limite = Math.max(p.raioAtuacaoKm * 2, 1);
-  const notaDistancia = Math.max(0, 1 - candidato.distanciaKm / limite);
-  if (candidato.distanciaKm <= p.raioAtuacaoKm) {
+  const notaDistancia = temPosicao
+    ? Math.max(0, 1 - candidato.distanciaKm! / limite)
+    : 0;
+  const pesoDistancia = temPosicao ? p.pesoDistancia : 0;
+
+  if (temPosicao && candidato.distanciaKm! <= p.raioAtuacaoKm) {
     motivos.push(
-      `Está a ${numero(candidato.distanciaKm, 1)} km` +
+      `Está a ${numero(candidato.distanciaKm!, 1)} km` +
         (candidato.fonte === "CELULAR" ? " (celular dele)" : " (pelo veículo)"),
     );
   }
+  if (!temPosicao) motivos.push("Sem posição no mapa — distância não entrou na conta");
 
   // carga: quem tem menos OS que a média pontua mais
   const referencia = Math.max(candidato.mediaOsEquipe, 1);
@@ -148,9 +177,9 @@ export function calcularScore(
   if (candidato.disponivel) motivos.push("Está disponível");
   else motivos.push("Em atendimento");
 
-  const total = somaDosPesos(p) || 1;
+  const total = somaDosPesos(p) - (p.pesoDistancia - pesoDistancia) || 1;
   const score =
-    ((notaDistancia * p.pesoDistancia +
+    ((notaDistancia * pesoDistancia +
       notaCarga * p.pesoCarga +
       notaMaterial * p.pesoMaterial +
       notaRegiao * p.pesoRegiao +

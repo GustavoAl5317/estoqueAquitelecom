@@ -164,14 +164,23 @@ export async function filaInteligente(
     const candidatos: CandidatoScore[] = [];
     let impedimento: string | null = null;
 
-    if (!temCoordenada) {
-      impedimento =
-        "OS sem coordenada — sem endereço no mapa não dá para medir distância.";
-    } else {
+    {
+      /**
+       * 4.11 — a falta de posição deixou de eliminar o candidato.
+       *
+       * Antes, técnico sem aparecer no mapa era descartado e OS sem coordenada
+       * não era ranqueada. Numa operação em que os celulares ainda não foram
+       * classificados na Central, isso descartava todo mundo em toda OS: a
+       * tela dizia "nenhum técnico com posição conhecida" e não recomendava
+       * ninguém — que foi como a fila parou de servir para o que existe.
+       *
+       * Agora a distância é um critério a mais, não a porta de entrada. Sem
+       * ela, carga, material, região e disponibilidade decidem; com ela, o
+       * ranking fica melhor. O motivo escrito ao lado avisa qual dos dois
+       * casos produziu aquela recomendação.
+       */
       for (const tecnico of tecnicos) {
         const posicao = posicaoPor.get(tecnico.id);
-        // sem aparelho que revele onde ele está, não dá para ranquear por distância
-        if (!posicao) continue;
 
         const faltando: string[] = [];
         for (const material of materiais) {
@@ -191,12 +200,15 @@ export async function filaInteligente(
             {
               tecnicoId: tecnico.id,
               tecnicoNome: tecnico.nome,
-              referencia: posicao.referencia,
-              fonte: posicao.fonte,
-              distanciaKm: distanciaKm(posicao, {
-                latitude: ordem.latitude!,
-                longitude: ordem.longitude!,
-              }),
+              referencia: posicao?.referencia ?? null,
+              fonte: posicao?.fonte ?? null,
+              distanciaKm:
+                posicao && temCoordenada
+                  ? distanciaKm(posicao, {
+                      latitude: ordem.latitude!,
+                      longitude: ordem.longitude!,
+                    })
+                  : null,
               temMaterial: faltando.length === 0,
               faltando,
               osAbertas: tecnico.ordens.length,
@@ -210,8 +222,11 @@ export async function filaInteligente(
       }
 
       if (!candidatos.length) {
+        impedimento = "Nenhum técnico ativo cadastrado para receber esta OS.";
+      } else if (!temCoordenada) {
+        // não impede a recomendação; avisa que ela saiu sem o critério de distância
         impedimento =
-          "Nenhum técnico com posição conhecida agora — nem por celular, nem por veículo.";
+          "OS sem coordenada — a recomendação saiu por carga, material e região.";
       }
     }
 

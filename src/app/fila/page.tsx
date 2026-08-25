@@ -247,10 +247,16 @@ export default async function Fila({
                             </span>
                           </div>
 
+                          {/*
+                            Sem posição, "0 km" seria mentira — e a mentira mais
+                            perigosa possível aqui, porque lê como "está em cima
+                            do cliente". Some a distância e diz o que falta.
+                          */}
                           <p className="text-xs text-[var(--texto-3)]">
-                            {candidato.referencia} ·{" "}
-                            {numero(candidato.distanciaKm, 1)} km ·{" "}
-                            {candidato.osAbertas} OS
+                            {candidato.distanciaKm === null
+                              ? "Sem posição no mapa"
+                              : `${candidato.referencia} · ${numero(candidato.distanciaKm, 1)} km`}{" "}
+                            · {candidato.osAbertas} OS
                           </p>
 
                           <ul className="mt-1.5 space-y-0.5">

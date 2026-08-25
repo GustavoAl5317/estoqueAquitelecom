@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { usuarioAtual } from "@/lib/sessao";
-import { ErroDeNegocio } from "@/lib/servicos/nucleo";
+import { auditar, ErroDeNegocio } from "@/lib/servicos/nucleo";
 import {
   atribuirOrdem,
   atualizarOrdem,
@@ -17,6 +17,8 @@ import {
 } from "@/lib/servicos/regioes";
 import { atualizarTipoOS, criarTipoOS } from "@/lib/servicos/tipos-os";
 import { podeFazer } from "@/lib/permissoes";
+import { distribuir } from "@/lib/servicos/distribuicao";
+import { salvarParametros } from "@/lib/servicos/parametros";
 import { prisma } from "@/lib/prisma";
 import type { Resultado } from "./estoque";
 
@@ -306,4 +308,112 @@ export async function acaoAtualizarTipoOS(
       ),
     ["/configuracoes", "/os", "/os/nova"],
   );
+}
+
+/**
+ * 4.11 — quem entra no rodízio, e quem atende cada tipo de OS.
+ *
+ * A operação pediu uma regra com nomes próprios: retirada de equipamento é de
+ * uma pessoa só, o resto se reparte entre três, e quem coordena não recebe OS.
+ * Nomes envelhecem — gente sai de férias, muda de função, é contratada. Por
+ * isso a regra é cadastro, editável aqui, e não uma lista dentro do código que
+ * só eu consigo mudar.
+ */
+export async function acaoSalvarDistribuicaoTecnico(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite mudar a distribuição de OS." };
+  }
+
+  const tecnicoId = String(dados.get("tecnicoId") ?? "");
+  const recebeAutomatico = dados.get("recebeAutomatico") === "on";
+  const tipos = dados.getAll("tipos").map(String).filter(Boolean);
+
+  return executar(async () => {
+    const antes = await prisma.tecnico.findUnique({
+      where: { id: tecnicoId },
+      include: { tiposAtendidos: { select: { id: true, rotulo: true } } },
+    });
+    if (!antes) throw new ErroDeNegocio("Técnico não encontrado.");
+
+    const atualizado = await prisma.tecnico.update({
+      where: { id: tecnicoId },
+      data: {
+        recebeAutomatico,
+        // `set` troca a lista inteira: o que não veio do formulário foi desmarcado
+        tiposAtendidos: { set: tipos.map((id) => ({ id })) },
+      },
+      include: { tiposAtendidos: { select: { rotulo: true } } },
+    });
+
+    const lista = (t: { rotulo: string }[]) =>
+      t.length ? t.map((x) => x.rotulo).join(", ") : "todos os tipos do rodízio";
+
+    await auditar(prisma, {
+      entidade: "Tecnico",
+      entidadeId: tecnicoId,
+      acao: "EDICAO",
+      descricao: `Distribuição de ${antes.nome}: ${
+        recebeAutomatico ? `recebe ${lista(atualizado.tiposAtendidos)}` : "não recebe OS automaticamente"
+      }.`,
+      usuarioId: usuario.id,
+      antes: {
+        recebeAutomatico: antes.recebeAutomatico,
+        tipos: antes.tiposAtendidos.map((t) => t.rotulo),
+      },
+      depois: {
+        recebeAutomatico,
+        tipos: atualizado.tiposAtendidos.map((t) => t.rotulo),
+      },
+    });
+
+    return atualizado;
+  }, ["/configuracoes", ...TELAS_OS]);
+}
+
+/**
+ * 4.11 — distribuir agora as OS que já estão abertas sem responsável.
+ *
+ * A automação cuida do que chega daqui para a frente. O que já estava na tela
+ * antes de ela existir precisa de um empurrão manual, e é este botão.
+ */
+export async function acaoDistribuirAgora(
+  _estado: Resultado,
+  _dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "os.gerenciar")) {
+    return { erro: "Seu perfil não permite distribuir ordens de serviço." };
+  }
+
+  return executar(() => distribuir(usuario.id), TELAS_OS);
+}
+
+/** 4.11 — liga e desliga a distribuição automática, sem depender de deploy. */
+export async function acaoAlternarDistribuicaoAutomatica(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite mudar esta configuração." };
+  }
+
+  const ligar = String(dados.get("ligar") ?? "") === "1";
+
+  return executar(async () => {
+    await salvarParametros({ distribuicaoAutomatica: ligar ? 1 : 0 });
+    await auditar(prisma, {
+      entidade: "Configuracao",
+      entidadeId: "operacao.distribuicaoAutomatica",
+      acao: "EDICAO",
+      descricao: `Distribuição automática de OS ${ligar ? "ligada" : "desligada"}.`,
+      usuarioId: usuario.id,
+      antes: { ligada: !ligar },
+      depois: { ligada: ligar },
+    });
+  }, ["/configuracoes", ...TELAS_OS]);
 }

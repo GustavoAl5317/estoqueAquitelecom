@@ -6,6 +6,8 @@ import { bairroDaCoordenada } from "./regioes";
 import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import { normalizar } from "@/lib/utils";
 import { STATUS_OS_ENCERRADOS } from "@/lib/dominio";
+import { parametros } from "./parametros";
+import { distribuir } from "./distribuicao";
 
 /**
  * 2.1 a 2.3 — SINCRONIZAÇÃO COM O SGP.
@@ -213,6 +215,8 @@ export type ResultadoSincronizacao = {
   criadas: number;
   atualizadas: number;
   semCoordenada: number;
+  /** 4.11 — quantas ganharam responsável pela distribuição automática */
+  distribuidas: number;
   erros: string[];
 };
 
@@ -256,6 +260,7 @@ export async function sincronizarContratos(
     criadas: 0,
     atualizadas: 0,
     semCoordenada: 0,
+    distribuidas: 0,
     erros: [],
   };
 
@@ -415,6 +420,31 @@ export async function sincronizarContratos(
         usuarioId: opcoes.usuarioId ?? null,
         ocorreuEm: abertaEm,
       });
+    }
+  }
+
+  /**
+   * 4.11 — a OS que chegou sem dono já sai daqui com um.
+   *
+   * Roda depois do laço, e não a cada OS, por dois motivos. O primeiro é que
+   * a carga precisa ser vista inteira: decidir uma por uma, relendo o banco,
+   * mandaria a rodada toda para quem estava mais livre no começo dela. O
+   * segundo é que a OS pode ganhar responsável na própria importação, pelo
+   * nome que veio do SGP — e o nome digitado por quem abriu o chamado vale
+   * mais do que qualquer score nosso.
+   *
+   * A falha aqui não derruba a sincronização: a OS importada é o resultado
+   * que importa, e distribuir é passo seguinte, que a próxima rodada refaz.
+   */
+  const config = await parametros();
+  if (config.distribuicaoAutomatica === 1) {
+    try {
+      const { atribuidas } = await distribuir(opcoes.usuarioId ?? null);
+      resultado.distribuidas = atribuidas;
+    } catch (erro) {
+      resultado.erros.push(
+        `Distribuição automática falhou: ${erro instanceof Error ? erro.message : "erro desconhecido"}`,
+      );
     }
   }
 
