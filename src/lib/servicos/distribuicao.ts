@@ -4,6 +4,7 @@ import { registrarEvento } from "./eventos";
 import { distanciaKm, posicoesDosTecnicos } from "./frota";
 import { calcularScore, parametros, type CandidatoScore } from "./parametros";
 import { STATUS_OS_ABERTOS, STATUS_TECNICO_ALOCAVEIS } from "@/lib/dominio";
+import { avisarSgpDaAtribuicao } from "./sgp-notificacao";
 
 /**
  * 4.11 — DISTRIBUIÇÃO AUTOMÁTICA DE OS.
@@ -225,6 +226,7 @@ export async function distribuir(
   opcoes: { ordemIds?: string[] } = {},
 ) {
   const escolhas = await escolherResponsaveis(opcoes);
+  const config = await parametros();
   let atribuidas = 0;
 
   for (const escolha of escolhas) {
@@ -264,6 +266,11 @@ export async function distribuir(
       status,
       usuarioId,
     });
+
+    // 2.32 — e o SGP fica sabendo, se a operação ligou isso na Central
+    if (config.notificarSgp === 1) {
+      await avisarSgpDaAtribuicao(escolha.ordemId, usuarioId);
+    }
 
     atribuidas += 1;
   }

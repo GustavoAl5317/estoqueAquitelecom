@@ -4,6 +4,8 @@ import { registrarEvento } from "./eventos";
 import { fecharPermanencia } from "./geofence";
 import { rotuloDoTipo, todosTiposOS } from "./tipos-os";
 import { chaveDeNome } from "./vinculo-tecnico";
+import { parametros } from "./parametros";
+import { avisarSgpDaAtribuicao } from "./sgp-notificacao";
 import {
   COLUNAS_QUADRO,
   STATUS_OS,
@@ -536,6 +538,14 @@ export async function atribuirOrdem(
     status: atualizada.status,
     usuarioId,
   });
+
+  // 2.32 — o SGP acompanha a decisão daqui, quando a operação liga isso
+  if (tecnico) {
+    const config = await parametros();
+    if (config.notificarSgp === 1) {
+      await avisarSgpDaAtribuicao(ordem.id, usuarioId);
+    }
+  }
 
   return atualizada;
 }

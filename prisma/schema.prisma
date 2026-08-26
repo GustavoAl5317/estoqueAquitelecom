@@ -81,6 +81,12 @@ model Tecnico {
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
 
+  /// 2.32 — o **login** desta pessoa no SGP, que é o que a API aceita ao
+  /// gravar o responsável de uma OS. Não é o nome: o SGP escreve por login
+  /// ("igor") e devolve por nome de exibição ("Igor"), e mandar o segundo
+  /// responde 404 "Técnico não localizado".
+  loginSgp String?
+
   /// 4.11 — entra no rodízio da distribuição automática. Desligar tira a
   /// pessoa do sorteio sem inativar o cadastro dela: quem coordena continua
   /// existindo no sistema, com histórico e login, mas não recebe OS.

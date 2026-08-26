@@ -37,6 +37,14 @@ export type Parametros = {
    * operação, não efeito colateral de uma atualização.
    */
   distribuicaoAutomatica: number;
+  /**
+   * 2.32 — 1 grava o responsável na OS do SGP a cada atribuição feita aqui.
+   *
+   * Separado da distribuição automática de propósito: uma decide quem atende,
+   * a outra escreve no sistema do cliente. Dá para querer a primeira sem a
+   * segunda, e ligar as duas de uma vez esconderia qual delas causou o quê.
+   */
+  notificarSgp: number;
 };
 
 export const PARAMETROS_PADRAO: Parametros = {
@@ -51,6 +59,7 @@ export const PARAMETROS_PADRAO: Parametros = {
   raioChegadaMetros: 150,
   moverAoChegar: 0,
   distribuicaoAutomatica: 0,
+  notificarSgp: 0,
 };
 
 const PREFIXO = "operacao.";

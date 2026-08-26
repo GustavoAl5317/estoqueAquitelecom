@@ -2,6 +2,7 @@
 
 import {
   acaoAlternarDistribuicaoAutomatica,
+  acaoAlternarNotificacaoSgp,
   acaoDistribuirAgora,
   acaoSalvarDistribuicaoTecnico,
 } from "@/app/acoes/operacao";
@@ -13,6 +14,9 @@ export type TecnicoDistribuicao = {
   nome: string;
   recebeAutomatico: boolean;
   tiposAtendidos: string[];
+  loginSgp: string | null;
+  /** o nome que o SGP já mandou para este técnico, para sugerir o login */
+  nomeNoSgp: string | null;
 };
 
 export type TipoDisponivel = { id: string; rotulo: string };
@@ -30,10 +34,12 @@ export function DistribuicaoDeTecnicos({
   tecnicos,
   tipos,
   ligada,
+  escreveNoSgp,
 }: {
   tecnicos: TecnicoDistribuicao[];
   tipos: TipoDisponivel[];
   ligada: boolean;
+  escreveNoSgp: boolean;
 }) {
   const noRodizio = tecnicos.filter(
     (t) => t.recebeAutomatico && t.tiposAtendidos.length === 0,
@@ -72,6 +78,40 @@ export function DistribuicaoDeTecnicos({
           {ligada ? "Desligar" : "Ligar distribuição automática"}
         </BotaoEnviar>
       </FormularioAcao>
+
+      {/*
+        Segunda chave, separada da primeira: uma decide quem atende, a outra
+        escreve no sistema do cliente. Ligar as duas de uma vez esconderia
+        qual delas causou o quê.
+      */}
+      <FormularioAcao
+        acao={acaoAlternarNotificacaoSgp}
+        className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--borda)] p-3"
+      >
+        <input type="hidden" name="ligar" value={escreveNoSgp ? "0" : "1"} />
+        <span className="flex items-center gap-2 text-sm">
+          <Etiqueta tom={escreveNoSgp ? "positivo" : "neutro"} ponto>
+            {escreveNoSgp ? "escreve no SGP" : "não escreve no SGP"}
+          </Etiqueta>
+          {escreveNoSgp
+            ? "Cada atribuição grava o responsável na OS do SGP."
+            : "A atribuição fica só aqui; a OS no SGP continua sem responsável."}
+        </span>
+        <BotaoEnviar variante={escreveNoSgp ? "sutil" : "primario"}>
+          {escreveNoSgp ? "Desligar" : "Ligar escrita no SGP"}
+        </BotaoEnviar>
+      </FormularioAcao>
+
+      {escreveNoSgp && tecnicos.some((t) => !t.loginSgp && !t.nomeNoSgp) && (
+        <Aviso tom="atencao" titulo="Técnico sem login do SGP">
+          {tecnicos
+            .filter((t) => !t.loginSgp && !t.nomeNoSgp)
+            .map((t) => t.nome)
+            .join(", ")}{" "}
+          — as OS destes não vão aparecer com responsável no SGP. Preencha o
+          login de cada um abaixo.
+        </Aviso>
+      )}
 
       {/* o resumo primeiro: é o que se confere antes de mexer */}
       <div className="rounded-lg bg-[var(--superficie-2)] p-3 text-sm">
@@ -161,6 +201,28 @@ export function DistribuicaoDeTecnicos({
                   </label>
                 ))}
               </div>
+
+              {/*
+                2.32 — o SGP grava por login, não por nome. Mandar "Igor" onde
+                ele espera "igor" devolve "Técnico não localizado" e a OS fica
+                sem responsável lá, em silêncio. O placeholder mostra o palpite
+                que o sistema usaria; digitar aqui é o que torna isso certo.
+              */}
+              <label className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+                Login no SGP
+                <input
+                  type="text"
+                  name="loginSgp"
+                  defaultValue={tecnico.loginSgp ?? ""}
+                  placeholder={tecnico.nomeNoSgp?.toLowerCase() ?? "ex.: igor"}
+                  className="rounded-lg border border-[var(--borda-forte)] px-2 py-1 text-sm"
+                />
+                {!tecnico.loginSgp && tecnico.nomeNoSgp && (
+                  <span className="text-xs text-[var(--texto-3)]">
+                    sem cadastro — seria tentado &quot;{tecnico.nomeNoSgp.toLowerCase()}&quot;
+                  </span>
+                )}
+              </label>
 
               <BotaoEnviar variante="secundario">Salvar</BotaoEnviar>
             </FormularioAcao>

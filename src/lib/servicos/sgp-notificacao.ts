@@ -41,6 +41,36 @@ export function osIdDoIdSgp(idSgp: string | null | undefined) {
   return casado ? casado[1] : null;
 }
 
+/**
+ * O login com que este técnico é conhecido no SGP.
+ *
+ * Preferência para o que foi cadastrado à mão — é a única fonte que alguém
+ * conferiu. Sem ele, cai no palpite: o nome que o próprio SGP mandou nas OS
+ * deste técnico, em minúsculas. O palpite acerta quando o provedor cadastrou
+ * login e nome iguais, que foi o caso de "igor" → "Igor"; quando erra, o SGP
+ * devolve 404 e nada é alterado, então errar aqui é barato.
+ */
+export async function loginSgpDoTecnico(tecnicoId: string) {
+  const tecnico = await prisma.tecnico.findUnique({
+    where: { id: tecnicoId },
+    select: { nome: true, loginSgp: true },
+  });
+  if (!tecnico) return { login: null, origem: "sem técnico" as const };
+  if (tecnico.loginSgp?.trim()) {
+    return { login: tecnico.loginSgp.trim(), origem: "cadastro" as const };
+  }
+
+  const doHistorico = await prisma.ordemServico.findFirst({
+    where: { tecnicoId, tecnicoSgpNome: { not: null } },
+    select: { tecnicoSgpNome: true },
+    orderBy: { abertaEm: "desc" },
+  });
+
+  const bruto = doHistorico?.tecnicoSgpNome?.trim();
+  if (!bruto) return { login: null, origem: "desconhecido" as const };
+  return { login: bruto.toLowerCase(), origem: "palpite" as const };
+}
+
 export type ResultadoEscrita = {
   ok: boolean;
   /** o corpo exato enviado, sem as credenciais */
@@ -210,18 +240,37 @@ export async function avisarSgpDaAtribuicao(
 ) {
   const ordem = await prisma.ordemServico.findUnique({
     where: { id: ordemId },
-    select: { numero: true, idSgp: true, tecnico: { select: { nome: true } } },
+    select: {
+      numero: true,
+      idSgp: true,
+      tecnicoId: true,
+      tecnico: { select: { nome: true } },
+    },
   });
-  if (!ordem?.idSgp || !ordem.tecnico) return;
+  if (!ordem?.idSgp || !ordem.tecnicoId || !ordem.tecnico) return;
+
+  const { login, origem } = await loginSgpDoTecnico(ordem.tecnicoId);
+
+  if (!login) {
+    await registrarEvento({
+      ordemServicoId: ordemId,
+      tipo: "OBSERVACAO",
+      descricao:
+        `SGP não avisado: ${ordem.tecnico.nome} não tem login do SGP no cadastro. ` +
+        `Preencha em Configurações para a OS aparecer com responsável lá.`,
+      usuarioId,
+    });
+    return;
+  }
 
   try {
-    const r = await gravarResponsavelNoSgp(ordem, ordem.tecnico.nome);
+    const r = await gravarResponsavelNoSgp(ordem, login);
     await registrarEvento({
       ordemServicoId: ordemId,
       tipo: "OBSERVACAO",
       descricao: r.ok
-        ? `SGP atualizado: ${ordem.tecnico.nome} como responsável.`
-        : `Não foi possível atualizar o SGP (${r.motivo}). O responsável aqui continua ${ordem.tecnico.nome}.`,
+        ? `SGP atualizado: ${ordem.tecnico.nome} como responsável (login "${login}").`
+        : `Não foi possível atualizar o SGP (${r.motivo}${origem === "palpite" ? `, login "${login}" foi palpite` : ""}). O responsável aqui continua ${ordem.tecnico.nome}.`,
       usuarioId,
     });
   } catch (erro) {

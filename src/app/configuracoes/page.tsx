@@ -43,7 +43,17 @@ export default async function Configuracoes() {
         orderBy: { nome: "asc" },
       }),
       prisma.tecnico.findMany({
-        include: { equipe: true, tiposAtendidos: { select: { id: true } } },
+        include: {
+          equipe: true,
+          tiposAtendidos: { select: { id: true } },
+          // o nome que o SGP já usou para esta pessoa, para sugerir o login
+          ordens: {
+            where: { tecnicoSgpNome: { not: null } },
+            select: { tecnicoSgpNome: true },
+            orderBy: { abertaEm: "desc" },
+            take: 1,
+          },
+        },
         orderBy: { nome: "asc" },
       }),
       prisma.equipe.findMany({
@@ -210,6 +220,7 @@ export default async function Configuracoes() {
         >
           <DistribuicaoDeTecnicos
             ligada={config.distribuicaoAutomatica === 1}
+            escreveNoSgp={config.notificarSgp === 1}
             tipos={tiposOS
               .filter((t) => t.ativo)
               .map((t) => ({ id: t.id, rotulo: t.rotulo }))}
@@ -218,6 +229,8 @@ export default async function Configuracoes() {
               nome: t.nome,
               recebeAutomatico: t.recebeAutomatico,
               tiposAtendidos: t.tiposAtendidos.map((x) => x.id),
+              loginSgp: t.loginSgp,
+              nomeNoSgp: t.ordens[0]?.tecnicoSgpNome ?? null,
             }))}
           />
         </Cartao>

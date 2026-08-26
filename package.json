@@ -19,7 +19,8 @@
     "sgp": "tsx scripts/sgp-explorar.ts",
     "traccar": "tsx scripts/traccar.ts",
     "tecnicos:sgp": "tsx scripts/tecnicos-do-sgp.ts",
-    "sgp:tecnico": "tsx scripts/sgp-tecnico.ts"
+    "sgp:tecnico": "tsx scripts/sgp-tecnico.ts",
+    "sgp:responsaveis": "tsx scripts/sgp-responsaveis.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.9.1",

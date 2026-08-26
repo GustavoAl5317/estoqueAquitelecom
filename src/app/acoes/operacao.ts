@@ -331,6 +331,7 @@ export async function acaoSalvarDistribuicaoTecnico(
   const tecnicoId = String(dados.get("tecnicoId") ?? "");
   const recebeAutomatico = dados.get("recebeAutomatico") === "on";
   const tipos = dados.getAll("tipos").map(String).filter(Boolean);
+  const loginSgp = String(dados.get("loginSgp") ?? "").trim() || null;
 
   return executar(async () => {
     const antes = await prisma.tecnico.findUnique({
@@ -343,6 +344,7 @@ export async function acaoSalvarDistribuicaoTecnico(
       where: { id: tecnicoId },
       data: {
         recebeAutomatico,
+        loginSgp,
         // `set` troca a lista inteira: o que não veio do formulário foi desmarcado
         tiposAtendidos: { set: tipos.map((id) => ({ id })) },
       },
@@ -411,6 +413,32 @@ export async function acaoAlternarDistribuicaoAutomatica(
       entidadeId: "operacao.distribuicaoAutomatica",
       acao: "EDICAO",
       descricao: `Distribuição automática de OS ${ligar ? "ligada" : "desligada"}.`,
+      usuarioId: usuario.id,
+      antes: { ligada: !ligar },
+      depois: { ligada: ligar },
+    });
+  }, ["/configuracoes", ...TELAS_OS]);
+}
+
+/** 2.32 — liga e desliga a escrita do responsável no SGP. */
+export async function acaoAlternarNotificacaoSgp(
+  _estado: Resultado,
+  dados: FormData,
+): Promise<Resultado> {
+  const usuario = await usuarioAtual();
+  if (!podeFazer(usuario.papel, "sistema.administrar")) {
+    return { erro: "Seu perfil não permite mudar esta configuração." };
+  }
+
+  const ligar = String(dados.get("ligar") ?? "") === "1";
+
+  return executar(async () => {
+    await salvarParametros({ notificarSgp: ligar ? 1 : 0 });
+    await auditar(prisma, {
+      entidade: "Configuracao",
+      entidadeId: "operacao.notificarSgp",
+      acao: "EDICAO",
+      descricao: `Escrita do responsável no SGP ${ligar ? "ligada" : "desligada"}.`,
       usuarioId: usuario.id,
       antes: { ligada: !ligar },
       depois: { ligada: ligar },
