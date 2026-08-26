@@ -140,7 +140,41 @@ async function procurarOsViva(limite: number) {
   );
 }
 
+/**
+ * Os nomes de técnico que o próprio SGP já mandou.
+ *
+ * O cadastro de técnicos de lá não é exposto por nenhuma rota, mas toda OS
+ * importada trouxe `os_tecnico_responsavel` como o SGP o escreve. Esses nomes
+ * são, por construção, os que ele reconhece — é a lista que não existe,
+ * reconstruída pelo que já passou por aqui.
+ */
+async function listarNomesConhecidos() {
+  const linhas = await prisma.ordemServico.findMany({
+    where: { origem: "SGP", tecnicoSgpNome: { not: null } },
+    select: { tecnicoSgpNome: true },
+    distinct: ["tecnicoSgpNome"],
+    orderBy: { tecnicoSgpNome: "asc" },
+  });
+
+  if (!linhas.length) {
+    console.log(
+      `\n  Nenhuma OS importada trouxe responsável preenchido.\n` +
+        `  Peça ao cliente os nomes como estão no cadastro de técnicos do SGP.\n`,
+    );
+    return;
+  }
+
+  console.log(`\n  ${linhas.length} nome(s) que o SGP já usou nas OS daqui:\n`);
+  for (const l of linhas) console.log(`    "${l.tecnicoSgpNome}"`);
+  console.log(`\n  Use um destes, exatamente como está escrito.\n`);
+}
+
 async function main() {
+  if (argv.includes("--nomes")) {
+    await listarNomesConhecidos();
+    return;
+  }
+
   if (contratoBruto) {
     await despejarContrato(contratoBruto);
     return;
@@ -286,14 +320,30 @@ async function main() {
     );
   }
 
+  /**
+   * O veredito lê a resposta, não só o valor final.
+   *
+   * A primeira versão decidia por "o valor mudou?" e concluiu que o campo era
+   * ignorado quando o SGP respondeu 404 {"msg":"Técnico não localizado"}. Era o
+   * contrário: ele leu o campo, foi procurar a pessoa no cadastro dele e não
+   * achou. Campo ignorado não devolve erro sobre o conteúdo do campo.
+   */
+  const recusouONome = /t[eé]cnico n[aã]o localizado/i.test(envio.resposta ?? "");
+
   if (depois.responsavel === tecnico) {
-    console.log(`\n  ✓ FUNCIONA. O SGP aceita os_tecnico_responsavel na rota de update.\n`);
+    console.log(`\n  ✓ FUNCIONA. O SGP gravou "${tecnico}" como responsável.\n`);
+  } else if (recusouONome) {
+    console.log(
+      `\n  ✓ O CAMPO EXISTE — o SGP leu os_tecnico_responsavel e recusou o nome:\n` +
+        `    "${tecnico}" não está no cadastro de técnicos dele.\n` +
+        `\n  Repita com o nome exato de lá. Para ver os que o SGP já usou:\n` +
+        `    npm run sgp:tecnico -- --nomes\n`,
+    );
   } else if (depois.responsavel !== antes.responsavel) {
-    console.log(`\n  ~ Mudou, mas para algo diferente do enviado. Vale investigar antes de ligar.\n`);
+    console.log(`\n  ~ Mudou, mas para algo diferente do enviado. Investigue antes de ligar.\n`);
   } else {
     console.log(
-      `\n  ✗ NÃO PEGOU. O campo foi ignorado — a rota aceita o POST e descarta\n` +
-        `    os_tecnico_responsavel. Não dá para fazer do jeito pedido sem a TSMX.\n`,
+      `\n  ✗ Não mudou e o SGP não reclamou do nome. Resposta: ${envio.resposta ?? "—"}\n`,
     );
   }
 
