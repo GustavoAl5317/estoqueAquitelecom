@@ -8,6 +8,7 @@ import { normalizar } from "@/lib/utils";
 import { STATUS_OS_ENCERRADOS } from "@/lib/dominio";
 import { parametros } from "./parametros";
 import { distribuir } from "./distribuicao";
+import { configuracaoSgp } from "./sgp-config";
 
 /**
  * 2.1 a 2.3 — SINCRONIZAÇÃO COM O SGP.
@@ -70,20 +71,8 @@ function texto(valor: ValorSgp | undefined) {
   return String(valor).trim();
 }
 
-function configuracao() {
-  const base = (process.env.SGP_BASE_URL ?? process.env.SGP_URL ?? "").replace(
-    /\/+$/,
-    "",
-  );
-  const app = process.env.SGP_APP ?? "";
-  const token = process.env.SGP_TOKEN ?? "";
-
-  if (!base) throw new ErroDeNegocio("SGP_BASE_URL não configurada no .env.");
-  if (!app || !token) {
-    throw new ErroDeNegocio("SGP_APP e SGP_TOKEN precisam estar no .env.");
-  }
-  return { base, app, token };
-}
+/** as credenciais vivem em `sgp-config.ts` — quem escreve no SGP usa as mesmas */
+const configuracao = configuracaoSgp;
 
 /** o SGP fala form-data; JSON alguns endpoints ignoram em silêncio */
 async function consultarContrato(contrato: number): Promise<ChamadoSgp[]> {
