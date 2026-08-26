@@ -123,12 +123,35 @@ export async function responsavelNoSgp(contrato: string, osId: string) {
 
   if (!resposta.ok) return { erro: `SGP respondeu ${resposta.status} na leitura.` };
 
+  /**
+   * O SGP responde 200 com formatos diferentes.
+   *
+   * Quando dá certo vem um array. Quando não, vem objeto — `{"msg": "Contrato
+   * não localizado", "status": 0}` é o caso conhecido. Tratar tudo que não é
+   * array como lista vazia transforma a mensagem dele em "a OS não voltou",
+   * que manda quem está diagnosticando procurar no lugar errado.
+   */
   const dados = await resposta.json();
-  const linha = (Array.isArray(dados) ? dados : []).find(
+  if (!Array.isArray(dados)) {
+    return {
+      erro: `O SGP não devolveu uma lista para o contrato ${contrato}: ${JSON.stringify(dados).slice(0, 300)}`,
+    };
+  }
+
+  const linha = dados.find(
     (c: { os_id?: string | number }) => String(c.os_id ?? "") === osId,
   );
 
-  if (!linha) return { erro: `OS ${osId} não voltou na consulta do contrato ${contrato}.` };
+  if (!linha) {
+    const vistos = dados
+      .map((c: { os_id?: string | number }) => String(c.os_id ?? "—"))
+      .join(", ");
+    return {
+      erro:
+        `OS ${osId} não está entre as ${dados.length} do contrato ${contrato}. ` +
+        `O SGP devolveu: ${vistos || "nenhuma"}.`,
+    };
+  }
   return {
     responsavel: String(linha.os_tecnico_responsavel ?? ""),
     status: String(linha.os_status_descricao ?? ""),
