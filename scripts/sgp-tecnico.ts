@@ -22,17 +22,31 @@ import {
 } from "@/lib/servicos/sgp-notificacao";
 
 const argv = process.argv.slice(2);
+
+/**
+ * Junta tudo até a próxima opção.
+ *
+ * `npm run ... -- --tecnico "Igor Silva"` chega aqui como dois argumentos: o
+ * npm come as aspas no caminho. Ler só o primeiro gravaria "Igor" no SGP do
+ * cliente — erro silencioso, do tipo que só aparece quando alguém abre a OS
+ * lá e vê um nome pela metade.
+ */
 function opcao(nome: string) {
   const i = argv.indexOf(`--${nome}`);
-  return i >= 0 && argv[i + 1] ? argv[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const partes: string[] = [];
+  for (let j = i + 1; j < argv.length && !argv[j].startsWith("--"); j += 1) {
+    partes.push(argv[j]);
+  }
+  return partes.length ? partes.join(" ") : undefined;
 }
 
-const numero = opcao("os");
+const alvo = opcao("os");
 const tecnico = opcao("tecnico");
 const aplicar = argv.includes("--aplicar");
 
 async function main() {
-  if (!numero || !tecnico) {
+  if (!alvo || !tecnico) {
     console.error(`
   Informe a OS e o nome do técnico.
 
@@ -46,20 +60,46 @@ async function main() {
     process.exit(1);
   }
 
-  const ordem = await prisma.ordemServico.findUnique({
-    where: { numero },
+  /**
+   * A OS que veio do SGP é gravada aqui com o `os_id` cru — "31375" — enquanto
+   * o `idSgp` fica "OS-31375". As criadas aqui usam "OS-2026-0060". Os três
+   * formatos se parecem o suficiente para alguém errar, então aceitamos
+   * qualquer um em vez de exigir que se acerte de primeira.
+   */
+  const ordem = await prisma.ordemServico.findFirst({
+    where: {
+      OR: [
+        { numero: alvo },
+        { idSgp: alvo },
+        { idSgp: `OS-${alvo}` },
+        { numero: alvo!.replace(/^OS-/i, "") },
+      ],
+    },
     select: { numero: true, idSgp: true, contrato: true, cliente: true },
   });
 
   if (!ordem) {
-    console.error(`\n  OS ${numero} não encontrada nesta base.\n`);
+    // o numero da OS do SGP e o idSgp sao parecidos demais para errar sozinho
+    const parecidas = await prisma.ordemServico.findMany({
+      where: { OR: [{ numero: { contains: alvo } }, { idSgp: { contains: alvo } }] },
+      select: { numero: true, idSgp: true, cliente: true },
+      take: 5,
+    });
+    console.error(`\n  OS ${alvo} não encontrada nesta base.`);
+    if (parecidas.length) {
+      console.error("\n  Talvez seja uma destas:");
+      for (const p of parecidas) {
+        console.error(`    --os ${p.numero}   (idSgp ${p.idSgp ?? "—"})  ${p.cliente ?? ""}`);
+      }
+    }
+    console.error("");
     process.exit(1);
   }
 
   const osId = osIdDoIdSgp(ordem.idSgp);
   if (!osId || !ordem.contrato) {
     console.error(
-      `\n  A OS ${numero} não veio do SGP (idSgp=${ordem.idSgp ?? "—"}, contrato=${ordem.contrato ?? "—"}).\n`,
+      `\n  A OS ${ordem.numero} não veio do SGP (idSgp=${ordem.idSgp ?? "—"}, contrato=${ordem.contrato ?? "—"}).\n`,
     );
     process.exit(1);
   }
