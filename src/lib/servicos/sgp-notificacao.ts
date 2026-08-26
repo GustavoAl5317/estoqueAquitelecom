@@ -108,6 +108,44 @@ export async function gravarResponsavelNoSgp(
  * É a prova. A rota de escrita pode devolver 200 e ignorar o campo em
  * silêncio — foi assim que `/api/os/list/` nos enganou por três rodadas.
  */
+export type LinhaSgp = {
+  os_id?: string | number;
+  oc_protocolo?: string;
+  os_status_descricao?: string;
+  oc_status_descricao?: string;
+  os_tecnico_responsavel?: string;
+};
+
+/** a listagem crua de um contrato — leitura, a rota que já usamos há semanas */
+export async function listarContrato(
+  contrato: string,
+): Promise<{ linhas: LinhaSgp[]; erro?: string }> {
+  const { base, app, token } = configuracaoSgp();
+
+  const resposta = await fetch(`${base}/api/central/chamado/list/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: new URLSearchParams({ app, token, contrato }).toString(),
+    cache: "no-store",
+  });
+
+  if (!resposta.ok) {
+    return { linhas: [], erro: `SGP respondeu ${resposta.status} na leitura.` };
+  }
+
+  const dados = await resposta.json();
+  if (!Array.isArray(dados)) {
+    return {
+      linhas: [],
+      erro: `O SGP não devolveu uma lista para o contrato ${contrato}: ${JSON.stringify(dados).slice(0, 300)}`,
+    };
+  }
+  return { linhas: dados as LinhaSgp[] };
+}
+
 export async function responsavelNoSgp(contrato: string, osId: string) {
   const { base, app, token } = configuracaoSgp();
 

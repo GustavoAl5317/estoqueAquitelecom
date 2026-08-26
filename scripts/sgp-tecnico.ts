@@ -17,6 +17,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import {
   gravarResponsavelNoSgp,
+  listarContrato,
   osIdDoIdSgp,
   responsavelNoSgp,
 } from "@/lib/servicos/sgp-notificacao";
@@ -44,8 +45,48 @@ function opcao(nome: string) {
 const alvo = opcao("os");
 const tecnico = opcao("tecnico");
 const aplicar = argv.includes("--aplicar");
+const contratoBruto = opcao("contrato");
+
+/**
+ * Despeja o que o SGP devolve para um contrato.
+ *
+ * Existe porque a OS que a gente tem gravada pode não estar mais viva lá: o
+ * contrato 5388 devolveu sete chamados, todos com `os_id` vazio, o que quer
+ * dizer que aquela ordem já não vem mais na listagem. Para provar a escrita
+ * é preciso mirar numa OS que o SGP ainda devolve — e é isto que acha uma.
+ */
+async function despejarContrato(contrato: string) {
+  const { linhas, erro } = await listarContrato(contrato);
+  if (erro) {
+    console.error(`\n  ${erro}\n`);
+    process.exit(1);
+  }
+
+  console.log(`\n  contrato ${contrato} — ${linhas.length} chamado(s)\n`);
+  for (const l of linhas) {
+    const osId = String(l.os_id ?? "");
+    console.log(
+      `  os_id ${(osId || "—").padEnd(8)} ${String(l.oc_protocolo ?? "").padEnd(14)} ` +
+        `${String(l.os_status_descricao ?? l.oc_status_descricao ?? "").padEnd(22)} ` +
+        `resp: "${String(l.os_tecnico_responsavel ?? "")}"`,
+    );
+  }
+  const vivas = linhas.filter((l) => String(l.os_id ?? ""));
+  console.log(
+    `\n  ${vivas.length} com OS viva. ${
+      vivas.length
+        ? `Teste em: --os ${String(vivas[0].os_id)}`
+        : "Nenhuma serve para o teste de escrita."
+    }\n`,
+  );
+}
 
 async function main() {
+  if (contratoBruto) {
+    await despejarContrato(contratoBruto);
+    return;
+  }
+
   if (!alvo || !tecnico) {
     console.error(`
   Informe a OS e o nome do técnico.
