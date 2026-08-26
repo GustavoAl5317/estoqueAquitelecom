@@ -81,9 +81,64 @@ async function despejarContrato(contrato: string) {
   );
 }
 
+/**
+ * Varre os contratos das OS mais recentes até achar uma que o SGP ainda
+ * devolva com `os_id`.
+ *
+ * O contrato 5388 mostrou que nem toda OS que temos gravada continua viva na
+ * listagem de lá. Procurar na mão, um contrato por vez, é o tipo de trabalho
+ * que a máquina faz melhor — respeitando os 4 segundos entre chamadas, porque
+ * o 403 deste SGP é limite de requisição.
+ */
+async function procurarOsViva(limite: number) {
+  const recentes = await prisma.ordemServico.findMany({
+    where: { origem: "SGP", contrato: { not: null } },
+    select: { numero: true, contrato: true, cliente: true },
+    orderBy: { abertaEm: "desc" },
+    take: 200,
+  });
+
+  const contratos = [...new Set(recentes.map((o) => o.contrato!))].slice(0, limite);
+  console.log(`\n  procurando OS viva em ${contratos.length} contrato(s)...\n`);
+
+  for (const [i, contrato] of contratos.entries()) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 4000));
+
+    const { linhas, erro } = await listarContrato(contrato);
+    if (erro) {
+      console.log(`  ${contrato.padEnd(8)} ${erro.slice(0, 70)}`);
+      continue;
+    }
+
+    const vivas = linhas.filter((l) => String(l.os_id ?? ""));
+    console.log(
+      `  ${contrato.padEnd(8)} ${String(linhas.length).padStart(3)} chamado(s), ${vivas.length} com OS`,
+    );
+
+    if (vivas.length) {
+      const alvoViva = vivas[0];
+      console.log(
+        `\n  ✓ achei: os_id ${alvoViva.os_id} · responsável hoje: "${alvoViva.os_tecnico_responsavel ?? ""}"\n` +
+          `\n  Teste a escrita com:\n` +
+          `    npm run sgp:tecnico -- --os ${alvoViva.os_id} --tecnico "Igor Silva"\n`,
+      );
+      return;
+    }
+  }
+
+  console.log(
+    `\n  Nenhuma OS viva nos contratos consultados. Aumente com --procurar 20.\n`,
+  );
+}
+
 async function main() {
   if (contratoBruto) {
     await despejarContrato(contratoBruto);
+    return;
+  }
+
+  if (argv.includes("--procurar")) {
+    await procurarOsViva(Number(opcao("procurar")) || 8);
     return;
   }
 
