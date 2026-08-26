@@ -19,7 +19,6 @@ import {
   gravarResponsavelNoSgp,
   listarContrato,
   osIdDoIdSgp,
-  responsavelNoSgp,
 } from "@/lib/servicos/sgp-notificacao";
 
 const argv = process.argv.slice(2);
@@ -55,6 +54,16 @@ const contratoBruto = opcao("contrato");
  * dizer que aquela ordem já não vem mais na listagem. Para provar a escrita
  * é preciso mirar numa OS que o SGP ainda devolve — e é isto que acha uma.
  */
+/** a linha crua daquela OS, com todos os campos que o SGP mandar */
+async function lerOsCrua(contrato: string, osId: string) {
+  const { linhas } = await listarContrato(contrato);
+  return (
+    (linhas as unknown as Record<string, unknown>[]).find(
+      (l) => String(l.os_id ?? "") === osId,
+    ) ?? null
+  );
+}
+
 async function despejarContrato(contrato: string) {
   const { linhas, erro } = await listarContrato(contrato);
   if (erro) {
@@ -203,12 +212,27 @@ async function main() {
   console.log(`\n  OS ${ordem.numero}  ·  cliente ${ordem.cliente ?? "—"}`);
   console.log(`  os_id no SGP: ${osId}  ·  contrato ${ordem.contrato}\n`);
 
-  const antes = await responsavelNoSgp(ordem.contrato, osId);
-  if ("erro" in antes) {
-    console.error(`  Não consegui ler a OS no SGP: ${antes.erro}\n`);
+  /**
+   * A foto inteira da OS, não só o campo que interessa.
+   *
+   * Update parcial que apaga o que não foi enviado é comportamento real de
+   * algumas APIs, e aqui do lado de cá é indistinguível de sucesso: o campo que
+   * a gente queria mudou, e ninguém olha o resto. Numa OS de cliente real isso
+   * seria descoberto pelo cliente. Guardar tudo antes é o que permite dizer o
+   * que quebrou, e o que restaurar.
+   */
+  const fotoAntes = await lerOsCrua(ordem.contrato, osId);
+  if (!fotoAntes) {
+    console.error(`  Não consegui ler a OS ${osId} no contrato ${ordem.contrato}.\n`);
     process.exit(1);
   }
+
+  const antes = {
+    responsavel: String(fotoAntes.os_tecnico_responsavel ?? ""),
+    status: String(fotoAntes.os_status_descricao ?? ""),
+  };
   console.log(`  responsável hoje no SGP: "${antes.responsavel}"  (status: ${antes.status})`);
+  console.log(`  campos preenchidos hoje: ${Object.entries(fotoAntes).filter(([, v]) => v !== "" && v !== null).length}`);
 
   const envio = await gravarResponsavelNoSgp(ordem, tecnico, { simular: !aplicar });
 
@@ -226,13 +250,41 @@ async function main() {
   console.log(`  resposta: HTTP ${envio.httpStatus} ${envio.resposta ?? ""}`);
 
   // a prova: o SGP pode responder 200 e ignorar o campo em silêncio
-  const depois = await responsavelNoSgp(ordem.contrato, osId);
-  if ("erro" in depois) {
-    console.error(`\n  Não consegui reler a OS: ${depois.erro}\n`);
+  const fotoDepois = await lerOsCrua(ordem.contrato, osId);
+  if (!fotoDepois) {
+    console.error(`\n  Não consegui reler a OS ${osId}. Confira no SGP antes de mexer de novo.\n`);
     process.exit(1);
   }
 
+  const depois = {
+    responsavel: String(fotoDepois.os_tecnico_responsavel ?? ""),
+    status: String(fotoDepois.os_status_descricao ?? ""),
+  };
+
+  // o que mais mudou, incluindo o que possa ter sido apagado
+  const chaves = [...new Set([...Object.keys(fotoAntes), ...Object.keys(fotoDepois)])];
+  const mudou = chaves.filter(
+    (k) => JSON.stringify(fotoAntes[k]) !== JSON.stringify(fotoDepois[k]),
+  );
+
   console.log(`\n  responsável agora no SGP: "${depois.responsavel}"  (status: ${depois.status})`);
+  console.log(`\n  campos que mudaram: ${mudou.length ? mudou.join(", ") : "nenhum"}`);
+  for (const k of mudou) {
+    console.log(`    ${k}: ${JSON.stringify(fotoAntes[k])} → ${JSON.stringify(fotoDepois[k])}`);
+  }
+
+  const apagados = mudou.filter(
+    (k) =>
+      fotoAntes[k] !== "" &&
+      fotoAntes[k] !== null &&
+      (fotoDepois[k] === "" || fotoDepois[k] === null),
+  );
+  if (apagados.length) {
+    console.error(
+      `\n  PERIGO: o update APAGOU ${apagados.join(", ")}.\n` +
+        `  Restaure isso no SGP e não ligue a escrita automática.\n`,
+    );
+  }
 
   if (depois.responsavel === tecnico) {
     console.log(`\n  ✓ FUNCIONA. O SGP aceita os_tecnico_responsavel na rota de update.\n`);
